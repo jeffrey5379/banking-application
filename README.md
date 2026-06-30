@@ -16,7 +16,7 @@ A full-stack banking application. Supports multi-currency accounts, real-time ba
 | Resilience    | Resilience4j circuit breaker (debit eligibility check) |
 | Observability | Spring Actuator (`/actuator/health`)                   |
 | Utilities     | Lombok, Bean Validation                                |
-| Tests         | Spring Boot Test, WireMock                             |
+| Tests         | JUnit 5, Mockito, Spring Boot Test, WireMock           |
 
 **Frontend** — Angular 22 (standalone components, esbuild)
 
@@ -27,15 +27,16 @@ A full-stack banking application. Supports multi-currency accounts, real-time ba
 | PDF export       | jsPDF 4                                  |
 | Reactive         | RxJS 7.8                                 |
 | Language         | TypeScript 6                             |
+| Tests            | Jest 29 + jest-preset-angular            |
 
 **Infrastructure** — AWS (Terraform 1.6+)
 
-S3 + CloudFront → Angular SPA  
-ECS Fargate → Spring Boot container  
-RDS PostgreSQL 16 → database  
-ALB → backend routing (restricted to CloudFront IPs)  
-ECR → Docker image registry  
-Secrets Manager → DB password + JWT secret
+S3 + CloudFront -> Angular SPA
+ECS Fargate -> Spring Boot container
+RDS PostgreSQL 16 -> database
+ALB -> backend routing (restricted to CloudFront IPs)
+ECR -> Docker image registry
+Secrets Manager -> DB password + JWT secret
 
 ---
 
@@ -45,17 +46,15 @@ Secrets Manager → DB password + JWT secret
 
 ```bash
 cd backend
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-API starts at **http://localhost:8080**. Uses H2 in-memory database by default.
+API starts at **http://localhost:8080**. Uses H2 in-memory database.
 
-On first run `DataSeeder` creates three demo users.
+- H2 Console at http://localhost:8080/h2-console (JDBC URL: `jdbc:h2:mem:bankdb`, user: `admin`, password: `admin123`)
+- SQL query logging
 
-**H2 Console** — http://localhost:8080/h2-console  
-JDBC URL: `jdbc:h2:mem:bankdb` ·
-Username: `admin`
-Password: `admin123`
+On first run `DataSeeder` creates three demo users and seeds exchange rates.
 
 ### Frontend
 
@@ -64,8 +63,6 @@ cd frontend
 npm install
 npm start
 ```
-
-Opens at **http://localhost:4200**. All `/api` requests are proxied to `localhost:8080`.
 
 ---
 
@@ -79,50 +76,47 @@ All endpoints except `/api/auth/**` require a `Bearer` token in the `Authorizati
 
 ### Auth
 
-| Method | Path                 | Description                                                          |
-| ------ | -------------------- | -------------------------------------------------------------------- |
-| POST   | `/api/auth/register` | Register `{username, email, password}` → `{token, userId, username}` |
-| POST   | `/api/auth/login`    | Login `{username, password}` → `{token, userId, username}`           |
-
-### Users
-
-| Method | Path              | Description    |
-| ------ | ----------------- | -------------- |
-| GET    | `/api/users`      | List all users |
-| GET    | `/api/users/{id}` | Get user by ID |
+| Method | Path                 | Description                                                           |
+| ------ | -------------------- | --------------------------------------------------------------------- |
+| POST   | `/api/auth/register` | Register `{username, email, password}` -> `{token, userId, username}` |
+| POST   | `/api/auth/login`    | Login `{username, password}` -> `{token, userId, username}`           |
 
 ### Accounts
 
+All account endpoints operate on the authenticated user's own accounts. Cross-user access returns 403.
+
 | Method | Path                                             | Description                                             |
 | ------ | ------------------------------------------------ | ------------------------------------------------------- |
-| POST   | `/api/accounts`                                  | Create account `{userId, currency}`                     |
+| POST   | `/api/accounts`                                  | Create account `{currency}`                             |
 | GET    | `/api/accounts/user/{userId}`                    | List all accounts for a user                            |
-| GET    | `/api/accounts/{id}`                             | Account detail                                          |
-| GET    | `/api/accounts/{id}/balance`                     | Current balance                                         |
+| GET    | `/api/accounts/{id}`                             | Account summary (id, accountNumber, currency, balance)  |
+| GET    | `/api/accounts/{id}/summary`                     | Account stats `{totalIn, totalOut}`                     |
 | GET    | `/api/accounts/{id}/balance-history`             | Balance over time (for chart)                           |
 | GET    | `/api/accounts/{id}/transactions?page=0&size=10` | Paginated transaction history                           |
+| GET    | `/api/accounts/transactions/{txId}`              | Single transaction detail                               |
 | POST   | `/api/accounts/{id}/credit`                      | Deposit `{amount, description}`                         |
 | POST   | `/api/accounts/{id}/debit`                       | Withdraw `{amount, description}`                        |
 | POST   | `/api/accounts/{id}/exchange`                    | Exchange to another account `{amount, targetAccountId}` |
-| GET    | `/api/accounts/transactions/{txId}`              | Single transaction detail                               |
 
 ### Exchange Rates
 
-Exchange rates are cached in memory for **5 minutes** (Caffeine). EUR is the pivot currency.
+Rates are stored in the database (EUR as pivot currency) and cached in memory for **5 minutes** (Caffeine).
 
 | Method | Path                              | Description             |
 | ------ | --------------------------------- | ----------------------- |
 | GET    | `/api/exchange-rates`             | All rate pairs (cached) |
 | GET    | `/api/exchange-rates/{from}/{to}` | Specific rate (cached)  |
 
-Fixed rates (relative to EUR):
+Supported currencies and seeded rates:
 
 | Currency | Rate to EUR |
 | -------- | ----------- |
-| EUR      | 1.000000    |
-| USD      | 0.920000    |
-| CHF      | 1.050000    |
-| GBP      | 1.170000    |
+| EUR      | 1.00000000  |
+| USD      | 0.92000000  |
+| CHF      | 1.05000000  |
+| GBP      | 1.17000000  |
+| SEK      | 0.08700000  |
+| VND      | 0.00003700  |
 
 ### Debit eligibility
 
@@ -142,7 +136,7 @@ Debit operations call an external eligibility service (`${debit.eligibility.url}
 NgRx manages all state. The store has three feature slices:
 
 - **accounts** — user's account list, loading state
-- **account-detail** — current account, transactions (infinite scroll), balance history, exchange rates (cached in store, loaded once per session), operation loading state
+- **account-detail** — current account, transactions (infinite scroll), balance history, exchange rates (cached in store for the session), totalIn/totalOut stats, operation loading state
 - **transaction** — single transaction detail
 
 ---
@@ -152,29 +146,9 @@ NgRx manages all state. The store has three feature slices:
 ### Prerequisites
 
 - AWS CLI configured (`aws configure --profile bankapp`)
-- Terraform ≥ 1.6
+- Terraform >= 1.6
 - Docker
 - Maven 3.9+, Java 21
-
-### First-time setup
-
-Create the Terraform state backend (one-time):
-
-```bash
-aws s3api create-bucket --bucket "BUCKET_NAME_HERE" \
-  --region "AWS_REGION" --profile bankapp
-
-aws s3api put-bucket-versioning \
-  --bucket "BUCKET_NAME_HERE" \
-  --versioning-configuration Status=Enabled --profile bankapp
-
-aws dynamodb create-table \
-  --table-name terraform-locks \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1 --profile bankapp
-```
 
 ### Provision infrastructure
 
@@ -191,10 +165,10 @@ terraform apply
 ### Deploy
 
 ```bash
-# Deploy backend (build JAR → Docker image → ECR → force ECS redeployment)
+# Deploy backend (build JAR -> Docker image -> ECR -> force ECS redeployment)
 ./infrastructure/scripts/deploy-backend.sh
 
-# Deploy frontend (ng build → S3 sync → CloudFront invalidation)
+# Deploy frontend (ng build -> S3 sync -> CloudFront invalidation)
 ./infrastructure/scripts/deploy-frontend.sh
 ```
 
@@ -202,4 +176,6 @@ Both scripts read all required values from `terraform output` automatically.
 
 After deploy the app is available at the CloudFront URL:
 
+```bash
 cd infrastructure/terraform && terraform output app_url
+```
