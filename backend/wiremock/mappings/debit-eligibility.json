@@ -1,0 +1,52 @@
+{
+  "mappings": [
+    {
+      "name": "debit-eligibility - allowed for user 1",
+      "request": {
+        "method": "GET",
+        "url": "/debit-eligibility/1"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "isDebitAllowedForUser": true
+        }
+      }
+    },
+    {
+      "name": "debit-eligibility - denied for user 2",
+      "request": {
+        "method": "GET",
+        "url": "/debit-eligibility/2"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "isDebitAllowedForUser": false
+        }
+      }
+    },
+    {
+      "name": "debit-eligibility - server error for user 3",
+      "request": {
+        "method": "GET",
+        "url": "/debit-eligibility/3"
+      },
+      "response": {
+        "status": 500,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "error": "Internal Server Error"
+        }
+      }
+    }
+  ]
+}

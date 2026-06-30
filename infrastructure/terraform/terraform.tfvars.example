@@ -1,0 +1,20 @@
+aws_region   = "us-east-1"
+project_name = "octopus-bank"
+environment  = "prod"
+
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# Database
+db_name              = "bankdb"
+db_username          = "bankapp"
+db_instance_class    = "db.t3.micro"
+db_allocated_storage = 20
+db_multi_az          = false   # set true for production HA
+
+# ECS Fargate
+ecs_cpu           = 512   # 0.5 vCPU
+ecs_memory        = 1024  # 1 GB
+ecs_desired_count = 1
+
+# Leave empty to auto-generate a secure random secret
+jwt_secret = ""
