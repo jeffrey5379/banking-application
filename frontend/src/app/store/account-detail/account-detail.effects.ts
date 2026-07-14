@@ -1,7 +1,8 @@
 import { inject, Injectable } from '@angular/core';
+import { Router } from '@angular/router';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
-import { catchError, filter, map, of, switchMap, withLatestFrom } from 'rxjs';
+import { catchError, exhaustMap, filter, map, of, switchMap, tap, withLatestFrom } from 'rxjs';
 import { BankService } from '../../services/bank.service';
 import { AuthService } from '../../services/auth.service';
 import { AccountDetailActions } from './account-detail.actions';
@@ -15,6 +16,7 @@ export class AccountDetailEffects {
   private bankService = inject(BankService);
   private authService = inject(AuthService);
   private store = inject(Store);
+  private router = inject(Router);
 
   loadAccount$ = createEffect(() =>
     this.actions$.pipe(
@@ -122,7 +124,7 @@ export class AccountDetailEffects {
   submitCredit$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitCredit),
-      switchMap(({ accountId, req }) =>
+      exhaustMap(({ accountId, req }) =>
         this.bankService.credit(accountId, req).pipe(
           map((transaction) => AccountDetailActions.submitCreditSuccess({ transaction })),
           catchError((e) =>
@@ -136,7 +138,7 @@ export class AccountDetailEffects {
   submitDebit$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitDebit),
-      switchMap(({ accountId, req }) =>
+      exhaustMap(({ accountId, req }) =>
         this.bankService.debit(accountId, req).pipe(
           map((transaction) => AccountDetailActions.submitDebitSuccess({ transaction })),
           catchError((e) =>
@@ -150,7 +152,7 @@ export class AccountDetailEffects {
   submitExchange$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitExchange),
-      switchMap(({ accountId, req }) =>
+      exhaustMap(({ accountId, req }) =>
         this.bankService.exchange(accountId, req).pipe(
           map((transactions) => AccountDetailActions.submitExchangeSuccess({ transactions })),
           catchError((e) =>
@@ -201,5 +203,14 @@ export class AccountDetailEffects {
         return of(AccountDetailActions.loadSummary({ accountId }));
       }),
     ),
+  );
+
+  redirectOnFailure$ = createEffect(
+    () =>
+      this.actions$.pipe(
+        ofType(AccountDetailActions.loadAccountFailure),
+        tap(() => this.router.navigate(['/accounts'])),
+      ),
+    { dispatch: false },
   );
 }

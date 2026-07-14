@@ -92,12 +92,6 @@ public class BankDtos {
             boolean last
     ) {}
 
-    public record ExchangeRateResponse(
-            Currency from,
-            Currency to,
-            BigDecimal rate
-    ) {}
-
     public record AccountStatsResponse(
             BigDecimal totalIn,
             BigDecimal totalOut

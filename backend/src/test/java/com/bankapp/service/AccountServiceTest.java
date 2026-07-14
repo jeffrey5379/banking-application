@@ -18,7 +18,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -103,6 +102,30 @@ class AccountServiceTest {
     }
 
     @Test
+    void createAccount_accountNumberCollision_retriesAndSucceeds() {
+        when(accountRepository.existsByAccountNumber(any())).thenReturn(true, false);
+        when(accountRepository.save(any(Account.class))).thenReturn(eurAccount);
+
+        AccountSummaryResponse result = accountService.createAccount(new CreateAccountRequest(Currency.EUR));
+
+        assertThat(result.currency()).isEqualTo(Currency.EUR);
+        verify(accountRepository, times(2)).existsByAccountNumber(any());
+        verify(accountRepository).save(any(Account.class));
+    }
+
+    @Test
+    void createAccount_allRetriesExhausted_throwsIllegalStateException() {
+        when(accountRepository.existsByAccountNumber(any())).thenReturn(true);
+
+        assertThatThrownBy(() -> accountService.createAccount(new CreateAccountRequest(Currency.EUR)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unique account number");
+
+        verify(accountRepository, times(10)).existsByAccountNumber(any());
+        verify(accountRepository, never()).save(any());
+    }
+
+    @Test
     void createAccount_authenticatedUserNotFound_throwsResourceNotFoundException() {
         when(userRepository.findByUsername("alice")).thenReturn(Optional.empty());
 
@@ -123,11 +146,6 @@ class AccountServiceTest {
                 .containsExactlyInAnyOrder(Currency.EUR, Currency.USD);
     }
 
-    @Test
-    void getAccountsByUser_differentUserId_throwsAccessDeniedException() {
-        assertThatThrownBy(() -> accountService.getAccountsByUser(99L))
-                .isInstanceOf(AccessDeniedException.class);
-    }
 
     // ── credit ────────────────────────────────────────────────────────────
 
@@ -162,14 +180,6 @@ class AccountServiceTest {
         assertThat(result.description()).isEqualTo("Credit");
     }
 
-    @Test
-    void credit_otherUsersAccount_throwsAccessDeniedException() {
-        Account bobAccount = buildAccount(30L, "ACC-CCCCCCCC", Currency.EUR, bob);
-        when(accountRepository.findById(30L)).thenReturn(Optional.of(bobAccount));
-
-        assertThatThrownBy(() -> accountService.credit(30L, new MoneyRequest(new BigDecimal("100.00"), null)))
-                .isInstanceOf(AccessDeniedException.class);
-    }
 
     // ── debit ─────────────────────────────────────────────────────────────
 
@@ -274,16 +284,6 @@ class AccountServiceTest {
                 .isInstanceOf(InsufficientFundsException.class);
     }
 
-    @Test
-    void exchange_otherUsersSourceAccount_throwsAccessDeniedException() {
-        Account bobEur = buildAccount(30L, "ACC-CCCCCCCC", Currency.EUR, bob);
-        when(accountRepository.findById(30L)).thenReturn(Optional.of(bobEur));
-        when(accountRepository.findById(20L)).thenReturn(Optional.of(usdAccount));
-
-        assertThatThrownBy(() -> accountService.exchange(30L,
-                new ExchangeRequest(new BigDecimal("100.00"), 20L)))
-                .isInstanceOf(AccessDeniedException.class);
-    }
 
     // ── getTransactionHistory ─────────────────────────────────────────────
 
@@ -333,13 +333,4 @@ class AccountServiceTest {
         return op;
     }
 
-    private Account buildAccount(Long id, String number, Currency currency, User user) {
-        Account a = new Account();
-        a.setId(id);
-        a.setAccountNumber(number);
-        a.setCurrency(currency);
-        a.setBalance(new BigDecimal("500.00"));
-        a.setUser(user);
-        return a;
-    }
 }

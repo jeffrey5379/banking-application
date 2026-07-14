@@ -23,7 +23,7 @@ import com.bankapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +37,11 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional
 public class AccountService {
+
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final long ACCOUNT_MIN = 1_000_000_000L;
+    private static final long ACCOUNT_RANGE = 9_000_000_000L;
+    private static final int MAX_NUMBER_RETRIES = 10;
 
     private final AccountRepository accountRepository;
     private final OperationRepository operationRepository;
@@ -56,27 +61,23 @@ public class AccountService {
         return toSummary(accountRepository.save(account));
     }
 
+    @PreAuthorize("@accountSecurity.isSelf(#userId, authentication)")
     @Transactional(readOnly = true)
     public List<AccountSummaryResponse> getAccountsByUser(Long userId) {
-        User user = currentUser();
-        if (!user.getId().equals(userId)) {
-            throw new AccessDeniedException("Access denied");
-        }
         return accountRepository.findByUserId(userId).stream()
                 .map(this::toSummary)
                 .toList();
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
     @Transactional(readOnly = true)
     public AccountSummaryResponse getAccountSummary(Long accountId) {
-        Account account = getAccount(accountId);
-        requireOwner(account);
-        return toSummary(account);
+        return toSummary(getAccount(accountId));
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
     public OperationResponse credit(Long accountId, MoneyRequest req) {
         Account account = getAccount(accountId);
-        requireOwner(account);
         account.setBalance(account.getBalance().add(req.amount()));
         accountRepository.save(account);
 
@@ -87,9 +88,9 @@ public class AccountService {
         return toOperationResponse(operationRepository.save(op));
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
     public OperationResponse debit(Long accountId, MoneyRequest req) {
         Account account = getAccount(accountId);
-        requireOwner(account);
         if (!debitEligibilityClient.isDebitAllowed(account.getUser().getId())) {
             throw new DebitNotAllowedException("Debit not allowed. Please contact support for details");
         }
@@ -106,11 +107,10 @@ public class AccountService {
         return toOperationResponse(operationRepository.save(op));
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#sourceAccountId, authentication)")
     public List<OperationResponse> exchange(Long sourceAccountId, ExchangeRequest req) {
         Account source = getAccount(sourceAccountId);
         Account target = getAccount(req.targetAccountId());
-
-        requireOwner(source);
 
         if (source.getId().equals(target.getId())) {
             throw new IllegalArgumentException("Cannot exchange between the same account");
@@ -142,37 +142,34 @@ public class AccountService {
         );
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
     @Transactional(readOnly = true)
     public List<BalancePoint> getBalanceHistory(Long accountId) {
-        Account account = getAccount(accountId);
-        requireOwner(account);
         return operationRepository.findByAccountIdOrderByCreatedAtAsc(accountId).stream()
                 .map(op -> new BalancePoint(op.getBalanceAfter(), op.getCreatedAt()))
                 .toList();
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
     @Transactional(readOnly = true)
     public OperationPage getTransactionHistoryPaged(Long accountId, Pageable pageable) {
-        Account account = getAccount(accountId);
-        requireOwner(account);
         Page<OperationResponse> page = operationRepository.findByAccountIdOrderByCreatedAtDesc(accountId, pageable)
                 .map(this::toOperationResponse);
         return new OperationPage(page.getContent(), page.getNumber(), page.getSize(),
                 page.getTotalElements(), page.isLast());
     }
 
+    @PreAuthorize("@accountSecurity.isOwnerOfTransaction(#operationId, authentication)")
     @Transactional(readOnly = true)
     public OperationResponse getTransaction(Long operationId) {
         Operation op = operationRepository.findById(operationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + operationId));
-        requireOwner(op.getAccount());
         return toOperationResponse(op);
     }
 
+    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
     @Transactional(readOnly = true)
     public AccountStatsResponse getAccountStats(Long accountId) {
-        Account account = getAccount(accountId);
-        requireOwner(account);
         BigDecimal totalIn = operationRepository.sumAmountByAccountIdAndTypes(
                 accountId, List.of(OperationType.CREDIT, OperationType.EXCHANGE_IN));
         BigDecimal totalOut = operationRepository.sumAmountByAccountIdAndTypes(
@@ -190,12 +187,6 @@ public class AccountService {
         String username = currentUsername();
         return userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found"));
-    }
-
-    private void requireOwner(Account account) {
-        if (!account.getUser().getUsername().equals(currentUsername())) {
-            throw new AccessDeniedException("Access denied to account " + account.getId());
-        }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -222,7 +213,13 @@ public class AccountService {
     }
 
     private String generateAccountNumber() {
-        return String.format("%010d", new SecureRandom().nextInt(1_000_000));
+        for (int i = 0; i < MAX_NUMBER_RETRIES; i++) {
+            String number = String.valueOf(ACCOUNT_MIN + RANDOM.nextLong(ACCOUNT_RANGE));
+            if (!accountRepository.existsByAccountNumber(number)) {
+                return number;
+            }
+        }
+        throw new IllegalStateException("Failed to generate a unique account number after " + MAX_NUMBER_RETRIES + " attempts");
     }
 
     private AccountSummaryResponse toSummary(Account a) {

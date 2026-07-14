@@ -83,11 +83,53 @@ describe('AuthService', () => {
     });
   });
 
-  describe('logout()', () => {
-    it('removes token and user from localStorage', () => {
+  describe('getToken()', () => {
+    it('returns null when no token is stored', () => {
+      expect(service.getToken()).toBeNull();
+    });
+
+    it('returns the stored token string', () => {
+      localStorage.setItem('jwt_token', 'my-token');
+      expect(service.getToken()).toBe('my-token');
+    });
+  });
+
+  describe('clearSession()', () => {
+    it('removes both token and user from localStorage', () => {
       localStorage.setItem('jwt_token', 'tok');
       localStorage.setItem('auth_user', JSON.stringify({ userId: 1, username: 'alice' }));
-      service.logout();
+
+      service.clearSession();
+
+      expect(service.getToken()).toBeNull();
+      expect(service.getUser()).toBeNull();
+    });
+
+    it('is idempotent when called on an already-empty session', () => {
+      expect(() => service.clearSession()).not.toThrow();
+      expect(service.isLoggedIn()).toBe(false);
+    });
+  });
+
+  describe('logout()', () => {
+    it('POSTs to /api/auth/logout and clears localStorage on success', () => {
+      localStorage.setItem('jwt_token', 'tok');
+      localStorage.setItem('auth_user', JSON.stringify({ userId: 1, username: 'alice' }));
+
+      service.logout().subscribe();
+      httpMock.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(service.isLoggedIn()).toBe(false);
+      expect(service.getUser()).toBeNull();
+    });
+
+    it('clears localStorage even when the server call fails', () => {
+      localStorage.setItem('jwt_token', 'tok');
+      localStorage.setItem('auth_user', JSON.stringify({ userId: 1, username: 'alice' }));
+
+      service.logout().subscribe({ error: () => {} });
+      httpMock.expectOne('/api/auth/logout').flush(null, { status: 500, statusText: 'Error' });
+
       expect(service.isLoggedIn()).toBe(false);
       expect(service.getUser()).toBeNull();
     });
