@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { provideMockActions } from '@ngrx/effects/testing';
 import { MockStore, provideMockStore } from '@ngrx/store/testing';
 import { Observable, of, throwError } from 'rxjs';
@@ -57,6 +58,7 @@ describe('AccountDetailEffects', () => {
         provideMockStore(),
         { provide: BankService, useValue: bankService },
         { provide: AuthService, useValue: { getUser: jest.fn().mockReturnValue(null) } },
+        { provide: Router, useValue: { navigate: jest.fn() } },
       ],
     });
 
@@ -214,6 +216,20 @@ describe('AccountDetailEffects', () => {
         expect(action).toEqual(
           AccountDetailActions.loadTransactions({ accountId: 5, page: 3 }),
         );
+        done();
+      });
+    });
+  });
+
+  // ── Navigation ───────────────────────────────────────────────────────────────
+
+  describe('redirectOnFailure$', () => {
+    it('navigates to /accounts when loadAccountFailure is dispatched', (done) => {
+      const router = TestBed.inject(Router);
+      actions$ = of(AccountDetailActions.loadAccountFailure({ error: 'Not found' }));
+
+      effects.redirectOnFailure$.subscribe(() => {
+        expect(router.navigate).toHaveBeenCalledWith(['/accounts']);
         done();
       });
     });

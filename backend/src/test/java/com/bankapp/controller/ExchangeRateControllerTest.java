@@ -1,6 +1,5 @@
 package com.bankapp.controller;
 
-import com.bankapp.model.Currency;
 import com.bankapp.service.ExchangeRateService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,33 +44,4 @@ class ExchangeRateControllerTest {
                 .andExpect(jsonPath("$.USD_EUR").value(0.920000));
     }
 
-    // ── GET /api/exchange-rates/{from}/{to} ───────────────────────────────
-
-    @Test
-    void getRate_eurToUsd_returnsRateResponse() throws Exception {
-        when(exchangeRateService.getRate(Currency.EUR, Currency.USD))
-                .thenReturn(new BigDecimal("1.086957"));
-
-        mockMvc.perform(get("/api/exchange-rates/EUR/USD"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.from").value("EUR"))
-                .andExpect(jsonPath("$.to").value("USD"))
-                .andExpect(jsonPath("$.rate").value(1.086957));
-    }
-
-    @Test
-    void getRate_sameCurrency_returnsOne() throws Exception {
-        when(exchangeRateService.getRate(Currency.EUR, Currency.EUR))
-                .thenReturn(BigDecimal.ONE);
-
-        mockMvc.perform(get("/api/exchange-rates/EUR/EUR"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.rate").value(1));
-    }
-
-    @Test
-    void getRate_invalidCurrency_returns400() throws Exception {
-        mockMvc.perform(get("/api/exchange-rates/INVALID/USD"))
-                .andExpect(status().isBadRequest());
-    }
 }

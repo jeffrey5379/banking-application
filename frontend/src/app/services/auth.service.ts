@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable, finalize, tap } from 'rxjs';
 import { AuthResponse } from '../models/bank.models';
 
 @Injectable({ providedIn: 'root' })
@@ -22,9 +22,10 @@ export class AuthService {
     );
   }
 
-  logout(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.USER_KEY);
+  logout(): Observable<void> {
+    return this.http.post<void>('/api/auth/logout', {}).pipe(
+      finalize(() => this.clearSession())
+    );
   }
 
   isLoggedIn(): boolean {
@@ -43,5 +44,10 @@ export class AuthService {
   private saveSession(res: AuthResponse): void {
     localStorage.setItem(this.TOKEN_KEY, res.token);
     localStorage.setItem(this.USER_KEY, JSON.stringify({ userId: res.userId, username: res.username }));
+  }
+
+  clearSession(): void {
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.USER_KEY);
   }
 }
