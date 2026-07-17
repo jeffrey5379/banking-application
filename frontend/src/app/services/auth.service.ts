@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, finalize, tap } from 'rxjs';
-import { AuthResponse } from '../models/bank.models';
+import { AuthResponse, LoginChallengeResponse } from '../models/bank.models';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -10,8 +10,14 @@ export class AuthService {
 
   constructor(private http: HttpClient) {}
 
-  login(username: string, password: string): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>('/api/auth/login', { username, password }).pipe(
+  // Step 1: password check. No session yet - server emails (or in dev, mocks) a one-time code.
+  login(username: string, password: string): Observable<LoginChallengeResponse> {
+    return this.http.post<LoginChallengeResponse>('/api/auth/login', { username, password });
+  }
+
+  // Step 2: the code from step 1. Only now is a session actually established.
+  verifyOtp(challengeToken: string, code: string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>('/api/auth/verify-otp', { challengeToken, code }).pipe(
       tap(res => this.saveSession(res))
     );
   }
@@ -36,7 +42,7 @@ export class AuthService {
     return localStorage.getItem(this.TOKEN_KEY);
   }
 
-  getUser(): { userId: number; username: string } | null {
+  getUser(): { userId: string; username: string } | null {
     const raw = localStorage.getItem(this.USER_KEY);
     return raw ? JSON.parse(raw) : null;
   }

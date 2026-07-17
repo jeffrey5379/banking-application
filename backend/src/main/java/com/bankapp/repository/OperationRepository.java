@@ -11,11 +11,14 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public interface OperationRepository extends JpaRepository<Operation, Long> {
     Page<Operation> findByAccountIdOrderByCreatedAtDesc(Long accountId, Pageable pageable);
     List<Operation> findByAccountIdOrderByCreatedAtAsc(Long accountId);
+    Optional<Operation> findByPublicId(UUID publicId);
 
     @Query("SELECT COALESCE(SUM(o.amount), 0) " +
             "FROM Operation o " +

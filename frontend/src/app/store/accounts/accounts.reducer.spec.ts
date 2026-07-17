@@ -5,11 +5,11 @@ import { Account } from '../../models/bank.models';
 const reducer = accountsFeature.reducer;
 
 const mockAccount: Account = {
-  id: 1,
+  id: '1',
   accountNumber: 'ACC-001',
   currency: 'EUR',
   balance: 1000,
-  userId: 1,
+  userId: '1',
   username: 'alice',
 };
 
@@ -30,7 +30,7 @@ describe('AccountsReducer', () => {
     it('sets loading and clears error', () => {
       const state = reducer(
         { ...initialState, error: 'previous error' },
-        AccountsActions.loadAccounts({ userId: 1 }),
+        AccountsActions.loadAccounts({ userId: '1' }),
       );
       expect(state.loading).toBe(true);
       expect(state.error).toBeNull();
@@ -63,7 +63,7 @@ describe('AccountsReducer', () => {
     it('sets addingAccount and clears error', () => {
       const state = reducer(
         { ...initialState, error: 'old error' },
-        AccountsActions.createAccount({ currency: 'USD' }),
+        AccountsActions.createAccount({ currency: 'USD', idempotencyKey: 'idem-key-1' }),
       );
       expect(state.addingAccount).toBe(true);
       expect(state.error).toBeNull();
@@ -72,7 +72,7 @@ describe('AccountsReducer', () => {
 
   describe('createAccountSuccess', () => {
     it('appends new account to list and clears addingAccount', () => {
-      const newAccount: Account = { ...mockAccount, id: 2, currency: 'USD' };
+      const newAccount: Account = { ...mockAccount, id: '2', currency: 'USD' };
       const state = reducer(
         { ...initialState, accounts: [mockAccount], addingAccount: true },
         AccountsActions.createAccountSuccess({ account: newAccount }),

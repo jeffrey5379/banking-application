@@ -2,11 +2,11 @@ import { selectCurrencyTotals } from './accounts.selectors';
 import { Account } from '../../models/bank.models';
 
 const acct = (id: number, currency: Account['currency'], balance: number): Account => ({
-  id,
+  id: String(id),
   accountNumber: `ACC-00${id}`,
   currency,
   balance,
-  userId: 1,
+  userId: '1',
   username: 'alice',
 });
 

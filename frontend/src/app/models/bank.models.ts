@@ -1,19 +1,23 @@
-export type Currency = 'EUR' | 'USD' | 'CHF' | 'GBP' | 'SEK' | 'VND';
-export type TransactionType = 'CREDIT' | 'DEBIT' | 'EXCHANGE_IN' | 'EXCHANGE_OUT';
+export type Currency = "EUR" | "USD" | "CHF" | "GBP" | "SEK" | "VND";
+export type TransactionType =
+  | "CREDIT"
+  | "DEBIT"
+  | "EXCHANGE_IN"
+  | "EXCHANGE_OUT";
 
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
   accounts?: Account[];
 }
 
 export interface Account {
-  id: number;
+  id: string;
   accountNumber: string;
   currency: Currency;
   balance: number;
-  userId: number;
+  userId: string;
   username: string;
 }
 
@@ -22,8 +26,8 @@ export interface AccountDetail extends Account {
 }
 
 export interface Transaction {
-  id: number;
-  accountId: number;
+  id: string;
+  accountId: string;
   accountNumber: string;
   type: TransactionType;
   amount: number;
@@ -32,7 +36,8 @@ export interface Transaction {
   description: string;
   createdAt: string;
   exchangeRate?: number;
-  relatedAccountId?: number;
+  relatedAccountId?: string;
+  relatedAccountNumber?: string;
 }
 
 export interface MoneyRequest {
@@ -42,7 +47,7 @@ export interface MoneyRequest {
 
 export interface ExchangeRequest {
   amount: number;
-  targetAccountId: number;
+  targetAccountId: string;
 }
 
 export interface CreateAccountRequest {
@@ -62,9 +67,13 @@ export interface TransactionPage {
   last: boolean;
 }
 
+export interface LoginChallengeResponse {
+  challengeToken: string;
+}
+
 export interface AuthResponse {
   token: string;
-  userId: number;
+  userId: string;
   username: string;
 }
 

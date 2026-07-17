@@ -73,7 +73,7 @@ import { AuthService } from "../../services/auth.service";
           <div class="error-banner">{{ error }}</div>
         }
 
-        @if (mode === "login") {
+        @if (mode === "login" && step === "credentials") {
           <form (ngSubmit)="onLogin()" #loginForm="ngForm">
             <div class="form-group">
               <label class="form-label">Username</label>
@@ -104,6 +104,42 @@ import { AuthService } from "../../services/auth.service";
               [disabled]="loading"
             >
               {{ loading ? "Signing in…" : "Sign In" }}
+            </button>
+          </form>
+        }
+
+        @if (mode === "login" && step === "otp") {
+          <form (ngSubmit)="onVerifyOtp()" #otpForm="ngForm">
+            <p class="text-muted text-sm" style="margin-bottom:16px">
+              Enter the 6-digit code sent to your email.
+            </p>
+            <div class="form-group" style="margin-bottom:20px">
+              <label class="form-label">Verification code</label>
+              <input
+                class="form-input"
+                [(ngModel)]="otpCode"
+                name="otpCode"
+                placeholder="6-digit code"
+                inputmode="numeric"
+                maxlength="6"
+                autocomplete="one-time-code"
+                required
+              />
+            </div>
+            <button
+              class="btn btn-primary auth-submit"
+              type="submit"
+              [disabled]="loading"
+            >
+              {{ loading ? "Verifying…" : "Verify Code" }}
+            </button>
+            <button
+              class="btn btn-ghost auth-submit"
+              type="button"
+              style="margin-top:8px"
+              (click)="backToCredentials()"
+            >
+              ← Back
             </button>
           </form>
         }
@@ -299,11 +335,15 @@ import { AuthService } from "../../services/auth.service";
 })
 export class LoginComponent {
   mode: "login" | "register" = "login";
+  step: "credentials" | "otp" = "credentials";
   username = "";
   email = "";
   password = "";
+  otpCode = "";
   loading = false;
   error = "";
+
+  private challengeToken = "";
 
   constructor(
     private authService: AuthService,
@@ -312,8 +352,10 @@ export class LoginComponent {
 
   switchMode(mode: "login" | "register") {
     this.mode = mode;
+    this.step = "credentials";
     this.error = "";
     this.password = "";
+    this.otpCode = "";
   }
 
   onLogin() {
@@ -324,7 +366,11 @@ export class LoginComponent {
     this.loading = true;
     this.error = "";
     this.authService.login(this.username, this.password).subscribe({
-      next: () => this.router.navigate(["/accounts"]),
+      next: (res) => {
+        this.challengeToken = res.challengeToken;
+        this.step = "otp";
+        this.loading = false;
+      },
       error: (err) => {
         this.error =
           err.status === 401
@@ -333,6 +379,28 @@ export class LoginComponent {
         this.loading = false;
       },
     });
+  }
+
+  onVerifyOtp() {
+    if (!this.otpCode) {
+      this.error = "Please enter the code.";
+      return;
+    }
+    this.loading = true;
+    this.error = "";
+    this.authService.verifyOtp(this.challengeToken, this.otpCode).subscribe({
+      next: () => this.router.navigate(["/accounts"]),
+      error: (err) => {
+        this.error = err.error?.message || "Invalid or expired code.";
+        this.loading = false;
+      },
+    });
+  }
+
+  backToCredentials() {
+    this.step = "credentials";
+    this.otpCode = "";
+    this.error = "";
   }
 
   onRegister(form: any) {

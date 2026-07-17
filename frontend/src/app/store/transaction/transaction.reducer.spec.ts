@@ -5,8 +5,8 @@ import { Transaction } from '../../models/bank.models';
 const reducer = transactionFeature.reducer;
 
 const mockTx: Transaction = {
-  id: 42,
-  accountId: 1,
+  id: '42',
+  accountId: '1',
   accountNumber: 'ACC-001',
   type: 'CREDIT',
   amount: 200,
@@ -25,7 +25,7 @@ describe('TransactionReducer', () => {
   it('loadTransaction sets loading and clears error', () => {
     const state = reducer(
       { transaction: null, loading: false, error: 'old' },
-      TransactionActions.loadTransaction({ id: 42 }),
+      TransactionActions.loadTransaction({ id: '42' }),
     );
     expect(state.loading).toBe(true);
     expect(state.error).toBeNull();

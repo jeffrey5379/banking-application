@@ -2,6 +2,7 @@ package com.bankapp.controller;
 
 import com.bankapp.dto.BankDtos.*;
 import com.bankapp.exception.GlobalExceptionHandler;
+import com.bankapp.exception.InvalidOtpException;
 import com.bankapp.service.AuthService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -36,11 +39,13 @@ class AuthControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    private static final UUID ALICE_PUBLIC_ID = UUID.randomUUID();
+
     // ── POST /api/auth/register ───────────────────────────────────────────
 
     @Test
     void register_validRequest_returns201WithToken() throws Exception {
-        AuthResponse authResponse = new AuthResponse("jwt.token.here", 1L, "alice");
+        AuthResponse authResponse = new AuthResponse("jwt.token.here", ALICE_PUBLIC_ID, "alice");
         when(authService.register(any())).thenReturn(authResponse);
 
         RegisterRequest req = new RegisterRequest("alice", "alice@example.com", "alice123");
@@ -50,7 +55,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.token").value("jwt.token.here"))
-                .andExpect(jsonPath("$.userId").value(1))
+                .andExpect(jsonPath("$.userId").value(ALICE_PUBLIC_ID.toString()))
                 .andExpect(jsonPath("$.username").value("alice"));
     }
 
@@ -80,9 +85,9 @@ class AuthControllerTest {
     // ── POST /api/auth/login ──────────────────────────────────────────────
 
     @Test
-    void login_validCredentials_returns200WithToken() throws Exception {
-        AuthResponse authResponse = new AuthResponse("jwt.token.here", 1L, "alice");
-        when(authService.login(any())).thenReturn(authResponse);
+    void login_validCredentials_returns200WithChallengeToken() throws Exception {
+        LoginChallengeResponse challenge = new LoginChallengeResponse("challenge-token-1");
+        when(authService.login(any())).thenReturn(challenge);
 
         LoginRequest req = new LoginRequest("alice", "alice123");
 
@@ -90,8 +95,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("jwt.token.here"))
-                .andExpect(jsonPath("$.username").value("alice"));
+                .andExpect(jsonPath("$.challengeToken").value("challenge-token-1"));
     }
 
     @Test
@@ -112,6 +116,45 @@ class AuthControllerTest {
         LoginRequest req = new LoginRequest("alice", "");
 
         mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ── POST /api/auth/verify-otp ───────────────────────────────────────────
+
+    @Test
+    void verifyOtp_validCode_returns200WithToken() throws Exception {
+        AuthResponse authResponse = new AuthResponse("jwt.token.here", ALICE_PUBLIC_ID, "alice");
+        when(authService.verifyOtp(any())).thenReturn(authResponse);
+
+        VerifyOtpRequest req = new VerifyOtpRequest("challenge-token-1", "111111");
+
+        mockMvc.perform(post("/api/auth/verify-otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value("jwt.token.here"))
+                .andExpect(jsonPath("$.username").value("alice"));
+    }
+
+    @Test
+    void verifyOtp_invalidCode_returns401() throws Exception {
+        when(authService.verifyOtp(any())).thenThrow(new InvalidOtpException("Invalid code"));
+
+        VerifyOtpRequest req = new VerifyOtpRequest("challenge-token-1", "000000");
+
+        mockMvc.perform(post("/api/auth/verify-otp")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void verifyOtp_blankCode_returns400() throws Exception {
+        VerifyOtpRequest req = new VerifyOtpRequest("challenge-token-1", "");
+
+        mockMvc.perform(post("/api/auth/verify-otp")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest());

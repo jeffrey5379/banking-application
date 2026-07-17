@@ -47,7 +47,7 @@ class UserServiceTest {
 
         UserResponse response = userService.createUser("alice", "alice@example.com", "$2a$10$hashedPassword");
 
-        assertThat(response.id()).isEqualTo(1L);
+        assertThat(response.id()).isEqualTo(alice.getPublicId());
         assertThat(response.username()).isEqualTo("alice");
         assertThat(response.email()).isEqualTo("alice@example.com");
         verify(userRepository).save(any(User.class));

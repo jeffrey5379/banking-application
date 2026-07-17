@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 public class BankDtos {
 
@@ -25,9 +26,18 @@ public class BankDtos {
             @NotBlank String password
     ) {}
 
+    public record LoginChallengeResponse(
+            String challengeToken
+    ) {}
+
+    public record VerifyOtpRequest(
+            @NotBlank String challengeToken,
+            @NotBlank String code
+    ) {}
+
     public record AuthResponse(
             String token,
-            Long userId,
+            UUID userId,
             String username
     ) {}
 
@@ -44,30 +54,30 @@ public class BankDtos {
 
     public record ExchangeRequest(
             @NotNull @DecimalMin(value = "0.01") BigDecimal amount,
-            @NotNull Long targetAccountId
+            @NotNull UUID targetAccountId
     ) {}
 
     // ── Response DTOs ─────────────────────────────────────────────────────
 
     public record UserResponse(
-            Long id,
+            UUID id,
             String username,
             String email,
             List<AccountSummaryResponse> accounts
     ) {}
 
     public record AccountSummaryResponse(
-            Long id,
+            UUID id,
             String accountNumber,
             Currency currency,
             BigDecimal balance,
-            Long userId,
+            UUID userId,
             String username
     ) {}
 
     public record OperationResponse(
-            Long id,
-            Long accountId,
+            UUID id,
+            UUID accountId,
             String accountNumber,
             OperationType type,
             BigDecimal amount,
@@ -76,7 +86,8 @@ public class BankDtos {
             String description,
             LocalDateTime createdAt,
             BigDecimal exchangeRate,
-            Long relatedAccountId
+            UUID relatedAccountId,
+            String relatedAccountNumber
     ) {}
 
     public record BalancePoint(

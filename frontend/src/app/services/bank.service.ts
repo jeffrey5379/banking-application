@@ -17,7 +17,7 @@ export class BankService {
     return this.http.get<User[]>(`${this.api}/users`);
   }
 
-  getUser(id: number): Observable<User> {
+  getUser(id: string): Observable<User> {
     return this.http.get<User>(`${this.api}/users/${id}`);
   }
 
@@ -26,46 +26,54 @@ export class BankService {
   }
 
   // ── Accounts ──────────────────────────────────────────────────────
-  getAccountsByUser(userId: number): Observable<Account[]> {
+  getAccountsByUser(userId: string): Observable<Account[]> {
     return this.http.get<Account[]>(`${this.api}/accounts/user/${userId}`);
   }
 
-  getAccountSummary(accountId: number): Observable<Account> {
+  getAccountSummary(accountId: string): Observable<Account> {
     return this.http.get<Account>(`${this.api}/accounts/${accountId}`);
   }
 
-  createAccount(req: CreateAccountRequest): Observable<Account> {
-    return this.http.post<Account>(`${this.api}/accounts`, req);
+  createAccount(req: CreateAccountRequest, idempotencyKey: string): Observable<Account> {
+    return this.http.post<Account>(`${this.api}/accounts`, req, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
   }
 
-  credit(accountId: number, req: MoneyRequest): Observable<Transaction> {
-    return this.http.post<Transaction>(`${this.api}/accounts/${accountId}/credit`, req);
+  credit(accountId: string, req: MoneyRequest, idempotencyKey: string): Observable<Transaction> {
+    return this.http.post<Transaction>(`${this.api}/accounts/${accountId}/credit`, req, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
   }
 
-  debit(accountId: number, req: MoneyRequest): Observable<Transaction> {
-    return this.http.post<Transaction>(`${this.api}/accounts/${accountId}/debit`, req);
+  debit(accountId: string, req: MoneyRequest, idempotencyKey: string): Observable<Transaction> {
+    return this.http.post<Transaction>(`${this.api}/accounts/${accountId}/debit`, req, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
   }
 
-  exchange(accountId: number, req: ExchangeRequest): Observable<Transaction[]> {
-    return this.http.post<Transaction[]>(`${this.api}/accounts/${accountId}/exchange`, req);
+  exchange(accountId: string, req: ExchangeRequest, idempotencyKey: string): Observable<Transaction[]> {
+    return this.http.post<Transaction[]>(`${this.api}/accounts/${accountId}/exchange`, req, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
   }
 
   // ── Transactions ──────────────────────────────────────────────────
-  getBalanceHistory(accountId: number): Observable<BalancePoint[]> {
+  getBalanceHistory(accountId: string): Observable<BalancePoint[]> {
     return this.http.get<BalancePoint[]>(`${this.api}/accounts/${accountId}/balance-history`);
   }
 
-  getTransactionsPaged(accountId: number, page: number, size: number): Observable<TransactionPage> {
+  getTransactionsPaged(accountId: string, page: number, size: number): Observable<TransactionPage> {
     return this.http.get<TransactionPage>(
       `${this.api}/accounts/${accountId}/transactions?page=${page}&size=${size}`
     );
   }
 
-  getTransaction(transactionId: number): Observable<Transaction> {
+  getTransaction(transactionId: string): Observable<Transaction> {
     return this.http.get<Transaction>(`${this.api}/accounts/transactions/${transactionId}`);
   }
 
-  getAccountStats(accountId: number): Observable<AccountStats> {
+  getAccountStats(accountId: string): Observable<AccountStats> {
     return this.http.get<AccountStats>(`${this.api}/accounts/${accountId}/summary`);
   }
 
