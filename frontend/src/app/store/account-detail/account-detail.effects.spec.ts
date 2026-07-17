@@ -9,11 +9,11 @@ import { AccountDetailActions } from './account-detail.actions';
 import { selectExchangeRates, selectAccountId, selectCurrentPage } from './account-detail.selectors';
 import { BankService } from '../../services/bank.service';
 import { AuthService } from '../../services/auth.service';
-import { Transaction } from '../../models/bank.models';
+import { Account, Transaction } from '../../models/bank.models';
 
 const mockTx: Transaction = {
-  id: 1,
-  accountId: 1,
+  id: '1',
+  accountId: '1',
   accountNumber: 'ACC-001',
   type: 'CREDIT',
   amount: 100,
@@ -104,10 +104,24 @@ describe('AccountDetailEffects', () => {
   describe('submitCredit$', () => {
     it('dispatches submitCreditSuccess on API success', (done) => {
       bankService.credit.mockReturnValue(of(mockTx));
-      actions$ = of(AccountDetailActions.submitCredit({ accountId: 1, req: { amount: 100 } }));
+      actions$ = of(
+        AccountDetailActions.submitCredit({ accountId: '1', req: { amount: 100 }, idempotencyKey: 'idem-key-1' }),
+      );
 
       effects.submitCredit$.subscribe((action) => {
         expect(action).toEqual(AccountDetailActions.submitCreditSuccess({ transaction: mockTx }));
+        done();
+      });
+    });
+
+    it('sends the idempotency key through to the backend', (done) => {
+      bankService.credit.mockReturnValue(of(mockTx));
+      actions$ = of(
+        AccountDetailActions.submitCredit({ accountId: '1', req: { amount: 100 }, idempotencyKey: 'idem-key-1' }),
+      );
+
+      effects.submitCredit$.subscribe(() => {
+        expect(bankService.credit).toHaveBeenCalledWith('1', { amount: 100 }, 'idem-key-1');
         done();
       });
     });
@@ -116,7 +130,9 @@ describe('AccountDetailEffects', () => {
       bankService.credit.mockReturnValue(
         throwError(() => ({ error: { message: 'Insufficient funds' } })),
       );
-      actions$ = of(AccountDetailActions.submitCredit({ accountId: 1, req: { amount: 9999 } }));
+      actions$ = of(
+        AccountDetailActions.submitCredit({ accountId: '1', req: { amount: 9999 }, idempotencyKey: 'idem-key-1' }),
+      );
 
       effects.submitCredit$.subscribe((action) => {
         expect(action).toEqual(
@@ -131,7 +147,9 @@ describe('AccountDetailEffects', () => {
     it('dispatches submitDebitSuccess on API success', (done) => {
       const debitTx = { ...mockTx, type: 'DEBIT' as const };
       bankService.debit.mockReturnValue(of(debitTx));
-      actions$ = of(AccountDetailActions.submitDebit({ accountId: 1, req: { amount: 50 } }));
+      actions$ = of(
+        AccountDetailActions.submitDebit({ accountId: '1', req: { amount: 50 }, idempotencyKey: 'idem-key-2' }),
+      );
 
       effects.submitDebit$.subscribe((action) => {
         expect(action).toEqual(AccountDetailActions.submitDebitSuccess({ transaction: debitTx }));
@@ -143,7 +161,9 @@ describe('AccountDetailEffects', () => {
       bankService.debit.mockReturnValue(
         throwError(() => ({ error: { message: 'Debit not allowed' } })),
       );
-      actions$ = of(AccountDetailActions.submitDebit({ accountId: 1, req: { amount: 50 } }));
+      actions$ = of(
+        AccountDetailActions.submitDebit({ accountId: '1', req: { amount: 50 }, idempotencyKey: 'idem-key-2' }),
+      );
 
       effects.submitDebit$.subscribe((action) => {
         expect(action).toEqual(
@@ -158,7 +178,11 @@ describe('AccountDetailEffects', () => {
     it('dispatches submitExchangeSuccess on API success', (done) => {
       bankService.exchange.mockReturnValue(of([mockTx]));
       actions$ = of(
-        AccountDetailActions.submitExchange({ accountId: 1, req: { amount: 200, targetAccountId: 2 } }),
+        AccountDetailActions.submitExchange({
+          accountId: '1',
+          req: { amount: 200, targetAccountId: '2' },
+          idempotencyKey: 'idem-key-3',
+        }),
       );
 
       effects.submitExchange$.subscribe((action) => {
@@ -170,18 +194,79 @@ describe('AccountDetailEffects', () => {
     });
   });
 
+  describe('refreshAccount$', () => {
+    it('dispatches loadAccountSuccess on API success', (done) => {
+      const account: Account = {
+        id: '1',
+        accountNumber: 'ACC-001',
+        currency: 'EUR',
+        balance: 1000,
+        userId: '1',
+        username: 'alice',
+      };
+      bankService.getAccountSummary.mockReturnValue(of(account));
+      actions$ = of(AccountDetailActions.refreshAccount({ accountId: '1' }));
+
+      effects.refreshAccount$.subscribe((action) => {
+        expect(action).toEqual(AccountDetailActions.loadAccountSuccess({ account }));
+        done();
+      });
+    });
+  });
+
+  describe('resyncOnFailure$', () => {
+    beforeEach(() => {
+      store.overrideSelector(selectAccountId, '1');
+      store.refreshState();
+    });
+
+    it('refreshes account, transactions, balance history, and summary after submitCreditFailure', (done) => {
+      actions$ = of(AccountDetailActions.submitCreditFailure({ error: 'Insufficient funds' }));
+
+      const emitted: Action[] = [];
+      effects.resyncOnFailure$.subscribe({
+        next: (a) => emitted.push(a),
+        complete: () => {
+          expect(emitted).toEqual([
+            AccountDetailActions.refreshAccount({ accountId: '1' }),
+            AccountDetailActions.loadTransactions({ accountId: '1', page: 0 }),
+            AccountDetailActions.loadBalanceHistory({ accountId: '1' }),
+            AccountDetailActions.loadSummary({ accountId: '1' }),
+          ]);
+          done();
+        },
+      });
+    });
+
+    it('resyncs after submitDebitFailure and submitExchangeFailure too', (done) => {
+      actions$ = of(
+        AccountDetailActions.submitDebitFailure({ error: 'Debit not allowed' }),
+        AccountDetailActions.submitExchangeFailure({ error: 'Exchange failed' }),
+      );
+
+      const emitted: Action[] = [];
+      effects.resyncOnFailure$.subscribe({
+        next: (a) => emitted.push(a),
+        complete: () => {
+          expect(emitted).toHaveLength(8);
+          done();
+        },
+      });
+    });
+  });
+
   // ── Side-effect triggers ─────────────────────────────────────────────────────
 
   describe('refreshBalanceHistory$', () => {
     beforeEach(() => {
-      store.overrideSelector(selectAccountId, 1);
+      store.overrideSelector(selectAccountId, '1');
       store.refreshState();
     });
 
     it('dispatches loadBalanceHistory after credit success', (done) => {
       actions$ = of(AccountDetailActions.submitCreditSuccess({ transaction: mockTx }));
       effects.refreshBalanceHistory$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: 1 }));
+        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
         done();
       });
     });
@@ -189,7 +274,7 @@ describe('AccountDetailEffects', () => {
     it('dispatches loadBalanceHistory after debit success', (done) => {
       actions$ = of(AccountDetailActions.submitDebitSuccess({ transaction: mockTx }));
       effects.refreshBalanceHistory$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: 1 }));
+        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
         done();
       });
     });
@@ -197,7 +282,7 @@ describe('AccountDetailEffects', () => {
     it('dispatches loadBalanceHistory after exchange success', (done) => {
       actions$ = of(AccountDetailActions.submitExchangeSuccess({ transactions: [mockTx] }));
       effects.refreshBalanceHistory$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: 1 }));
+        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
         done();
       });
     });
@@ -207,14 +292,14 @@ describe('AccountDetailEffects', () => {
 
   describe('loadMoreTransactions$', () => {
     it('dispatches loadTransactions with page incremented by 1', (done) => {
-      store.overrideSelector(selectAccountId, 5);
+      store.overrideSelector(selectAccountId, '5');
       store.overrideSelector(selectCurrentPage, 2);
       store.refreshState();
       actions$ = of(AccountDetailActions.loadMoreTransactions());
 
       effects.loadMoreTransactions$.subscribe((action) => {
         expect(action).toEqual(
-          AccountDetailActions.loadTransactions({ accountId: 5, page: 3 }),
+          AccountDetailActions.loadTransactions({ accountId: '5', page: 3 }),
         );
         done();
       });

@@ -2,11 +2,11 @@ import { selectOtherAccounts } from './account-detail.selectors';
 import { Account, AccountDetail } from '../../models/bank.models';
 
 const acct = (id: number, currency: Account['currency']): Account => ({
-  id,
+  id: String(id),
   accountNumber: `ACC-00${id}`,
   currency,
   balance: 100,
-  userId: 1,
+  userId: '1',
   username: 'alice',
 });
 
@@ -20,7 +20,7 @@ describe('selectOtherAccounts', () => {
     const account = detail(1, 'EUR');
     const allAccounts = [acct(1, 'EUR'), acct(2, 'USD'), acct(3, 'GBP')];
     const result = selectOtherAccounts.projector(account, allAccounts);
-    expect(result.every((a) => a.id !== 1)).toBe(true);
+    expect(result.every((a) => a.id !== '1')).toBe(true);
   });
 
   it('excludes accounts with the same currency (exchange must cross currencies)', () => {
@@ -39,7 +39,7 @@ describe('selectOtherAccounts', () => {
       acct(4, 'GBP'), // valid
     ];
     const result = selectOtherAccounts.projector(account, allAccounts);
-    expect(result.map((a) => a.id)).toEqual([3, 4]);
+    expect(result.map((a) => a.id)).toEqual(['3', '4']);
   });
 
   it('returns empty array when the user has no other-currency accounts', () => {

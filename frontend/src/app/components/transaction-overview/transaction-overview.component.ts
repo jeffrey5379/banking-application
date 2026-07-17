@@ -187,14 +187,14 @@ import {
               }}</span>
             </div>
           }
-          @if (tx()!.relatedAccountId) {
+          @if (tx()!.relatedAccountNumber) {
             <div class="detail-row">
               <span class="detail-label">Related Account</span>
               <span class="detail-value">
                 <a
                   [routerLink]="['/accounts', tx()!.relatedAccountId]"
                   class="link"
-                  >Account #{{ tx()!.relatedAccountId }}</a
+                  >Account #{{ tx()!.relatedAccountNumber }}</a
                 >
               </span>
             </div>
@@ -350,7 +350,7 @@ export class TransactionOverviewComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit() {
-    const id = Number(this.route.snapshot.paramMap.get("id"));
+    const id = this.route.snapshot.paramMap.get("id")!;
     this.store.dispatch(TransactionActions.loadTransaction({ id }));
   }
 
@@ -407,8 +407,8 @@ export class TransactionOverviewComponent implements OnInit, OnDestroy {
     ];
     if (tx.exchangeRate)
       rows.push(["Exchange Rate", tx.exchangeRate.toFixed(6)]);
-    if (tx.relatedAccountId)
-      rows.push(["Related Account", `#${tx.relatedAccountId}`]);
+    if (tx.relatedAccountNumber)
+      rows.push(["Related Account", `#${tx.relatedAccountNumber}`]);
 
     // Max width available for the value column (right ~60% of content area)
     const valueMaxWidth = (W - 80) * 0.58;

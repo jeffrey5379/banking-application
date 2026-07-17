@@ -49,6 +49,6 @@ public class UserService implements UserDetailsService {
     }
 
     private UserResponse toResponse(User u) {
-        return new UserResponse(u.getId(), u.getUsername(), u.getEmail(), null);
+        return new UserResponse(u.getPublicId(), u.getUsername(), u.getEmail(), null);
     }
 }

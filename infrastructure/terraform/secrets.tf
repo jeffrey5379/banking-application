@@ -18,7 +18,7 @@ locals {
 resource "aws_secretsmanager_secret" "db_password" {
   name                    = "/${var.project_name}/${var.environment}/db-password"
   description             = "RDS PostgreSQL master password"
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags                    = { Name = "${local.name_prefix}-secret-db-password" }
 }
 
@@ -32,7 +32,7 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 resource "aws_secretsmanager_secret" "jwt_secret" {
   name                    = "/${var.project_name}/${var.environment}/jwt-secret"
   description             = "Spring Boot JWT signing secret"
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   tags                    = { Name = "${local.name_prefix}-secret-jwt" }
 }
 

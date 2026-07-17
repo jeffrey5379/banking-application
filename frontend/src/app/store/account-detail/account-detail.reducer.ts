@@ -3,7 +3,7 @@ import { Account, AccountStats, BalancePoint, Transaction } from '../../models/b
 import { AccountDetailActions } from './account-detail.actions';
 
 export interface AccountDetailState {
-  accountId: number | null;
+  accountId: string | null;
   account: Account | null;
   allAccounts: Account[];
   exchangeRates: Record<string, number>;

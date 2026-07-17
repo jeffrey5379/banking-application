@@ -32,6 +32,7 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +49,32 @@ public class AccountService {
     private final UserRepository userRepository;
     private final ExchangeRateService exchangeRateService;
     private final DebitEligibilityClient debitEligibilityClient;
+
+    // ── Public ID resolution ─────────────────────────────────────────────
+    // Translates externally-facing UUIDs to internal DB IDs. Called at the
+    // controller boundary, before the resolved Long reaches any
+    // @PreAuthorize-guarded method below.
+
+    @Transactional(readOnly = true)
+    public Long resolveAccountId(UUID publicId) {
+        return accountRepository.findByPublicId(publicId)
+                .map(Account::getId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found: " + publicId));
+    }
+
+    @Transactional(readOnly = true)
+    public Long resolveUserId(UUID publicId) {
+        return userRepository.findByPublicId(publicId)
+                .map(User::getId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + publicId));
+    }
+
+    @Transactional(readOnly = true)
+    public Long resolveOperationId(UUID publicId) {
+        return operationRepository.findByPublicId(publicId)
+                .map(Operation::getId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found: " + publicId));
+    }
 
     // ── Account management ────────────────────────────────────────────────
 
@@ -110,7 +137,8 @@ public class AccountService {
     @PreAuthorize("@accountSecurity.isOwner(#sourceAccountId, authentication)")
     public List<OperationResponse> exchange(Long sourceAccountId, ExchangeRequest req) {
         Account source = getAccount(sourceAccountId);
-        Account target = getAccount(req.targetAccountId());
+        Account target = accountRepository.findByPublicId(req.targetAccountId())
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found: " + req.targetAccountId()));
 
         if (source.getId().equals(target.getId())) {
             throw new IllegalArgumentException("Cannot exchange between the same account");
@@ -223,13 +251,17 @@ public class AccountService {
     }
 
     private AccountSummaryResponse toSummary(Account a) {
-        return new AccountSummaryResponse(a.getId(), a.getAccountNumber(), a.getCurrency(),
-                a.getBalance(), a.getUser().getId(), a.getUser().getUsername());
+        return new AccountSummaryResponse(a.getPublicId(), a.getAccountNumber(), a.getCurrency(),
+                a.getBalance(), a.getUser().getPublicId(), a.getUser().getUsername());
     }
 
     private OperationResponse toOperationResponse(Operation op) {
-        return new OperationResponse(op.getId(), op.getAccount().getId(), op.getAccount().getAccountNumber(),
+        Account related = op.getRelatedAccountId() == null ? null
+                : accountRepository.findById(op.getRelatedAccountId()).orElse(null);
+        return new OperationResponse(op.getPublicId(), op.getAccount().getPublicId(), op.getAccount().getAccountNumber(),
                 op.getType(), op.getAmount(), op.getCurrency(), op.getBalanceAfter(),
-                op.getDescription(), op.getCreatedAt(), op.getExchangeRate(), op.getRelatedAccountId());
+                op.getDescription(), op.getCreatedAt(), op.getExchangeRate(),
+                related != null ? related.getPublicId() : null,
+                related != null ? related.getAccountNumber() : null);
     }
 }

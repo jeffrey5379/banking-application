@@ -29,14 +29,44 @@ describe('AuthService', () => {
       const req = httpMock.expectOne('/api/auth/login');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({ username: 'alice', password: 'secret' });
-      req.flush({ token: 'tok123', userId: 1, username: 'alice' });
+      req.flush({ challengeToken: 'challenge-token-1' });
     });
 
-    it('saves the token and user to localStorage after successful login', () => {
-      service.login('alice', 'secret').subscribe();
-      httpMock.expectOne('/api/auth/login').flush({ token: 'tok123', userId: 1, username: 'alice' });
+    it('does not establish a session yet - only the OTP challenge is returned', () => {
+      service.login('alice', 'secret').subscribe((res) => {
+        expect(res).toEqual({ challengeToken: 'challenge-token-1' });
+      });
+      httpMock.expectOne('/api/auth/login').flush({ challengeToken: 'challenge-token-1' });
+
+      expect(service.isLoggedIn()).toBe(false);
+      expect(service.getUser()).toBeNull();
+    });
+  });
+
+  describe('verifyOtp()', () => {
+    it('POSTs to /api/auth/verify-otp with the challenge token and code', () => {
+      service.verifyOtp('challenge-token-1', '111111').subscribe();
+      const req = httpMock.expectOne('/api/auth/verify-otp');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ challengeToken: 'challenge-token-1', code: '111111' });
+      req.flush({ token: 'tok123', userId: '1', username: 'alice' });
+    });
+
+    it('saves the token and user to localStorage after a successful verification', () => {
+      service.verifyOtp('challenge-token-1', '111111').subscribe();
+      httpMock.expectOne('/api/auth/verify-otp').flush({ token: 'tok123', userId: '1', username: 'alice' });
       expect(service.getToken()).toBe('tok123');
-      expect(service.getUser()).toEqual({ userId: 1, username: 'alice' });
+      expect(service.getUser()).toEqual({ userId: '1', username: 'alice' });
+    });
+
+    it('does not save a session when the code is rejected', () => {
+      service.verifyOtp('challenge-token-1', '000000').subscribe({ error: () => {} });
+      httpMock.expectOne('/api/auth/verify-otp').flush(
+        { message: 'Invalid code' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+      expect(service.isLoggedIn()).toBe(false);
+      expect(service.getUser()).toBeNull();
     });
   });
 
@@ -46,12 +76,12 @@ describe('AuthService', () => {
       const req = httpMock.expectOne('/api/auth/register');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({ username: 'bob', email: 'bob@example.com', password: 'pass' });
-      req.flush({ token: 'tok456', userId: 2, username: 'bob' });
+      req.flush({ token: 'tok456', userId: '2', username: 'bob' });
     });
 
     it('saves the token to localStorage after registration', () => {
       service.register('bob', 'bob@example.com', 'pass').subscribe();
-      httpMock.expectOne('/api/auth/register').flush({ token: 'tok456', userId: 2, username: 'bob' });
+      httpMock.expectOne('/api/auth/register').flush({ token: 'tok456', userId: '2', username: 'bob' });
       expect(service.isLoggedIn()).toBe(true);
       expect(service.getToken()).toBe('tok456');
     });
@@ -64,9 +94,9 @@ describe('AuthService', () => {
       expect(service.isLoggedIn()).toBe(false);
     });
 
-    it('returns true after a successful login', () => {
-      service.login('alice', 'pass').subscribe();
-      httpMock.expectOne('/api/auth/login').flush({ token: 'tok', userId: 1, username: 'alice' });
+    it('returns true after a successful OTP verification', () => {
+      service.verifyOtp('challenge-token-1', '111111').subscribe();
+      httpMock.expectOne('/api/auth/verify-otp').flush({ token: 'tok', userId: '1', username: 'alice' });
       expect(service.isLoggedIn()).toBe(true);
     });
   });
@@ -76,10 +106,10 @@ describe('AuthService', () => {
       expect(service.getUser()).toBeNull();
     });
 
-    it('returns the parsed user object after login', () => {
-      service.login('charlie', 'pw').subscribe();
-      httpMock.expectOne('/api/auth/login').flush({ token: 'tok', userId: 3, username: 'charlie' });
-      expect(service.getUser()).toEqual({ userId: 3, username: 'charlie' });
+    it('returns the parsed user object after OTP verification', () => {
+      service.verifyOtp('challenge-token-1', '111111').subscribe();
+      httpMock.expectOne('/api/auth/verify-otp').flush({ token: 'tok', userId: '3', username: 'charlie' });
+      expect(service.getUser()).toEqual({ userId: '3', username: 'charlie' });
     });
   });
 
@@ -97,7 +127,7 @@ describe('AuthService', () => {
   describe('clearSession()', () => {
     it('removes both token and user from localStorage', () => {
       localStorage.setItem('jwt_token', 'tok');
-      localStorage.setItem('auth_user', JSON.stringify({ userId: 1, username: 'alice' }));
+      localStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
 
       service.clearSession();
 
@@ -114,7 +144,7 @@ describe('AuthService', () => {
   describe('logout()', () => {
     it('POSTs to /api/auth/logout and clears localStorage on success', () => {
       localStorage.setItem('jwt_token', 'tok');
-      localStorage.setItem('auth_user', JSON.stringify({ userId: 1, username: 'alice' }));
+      localStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
 
       service.logout().subscribe();
       httpMock.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
@@ -125,7 +155,7 @@ describe('AuthService', () => {
 
     it('clears localStorage even when the server call fails', () => {
       localStorage.setItem('jwt_token', 'tok');
-      localStorage.setItem('auth_user', JSON.stringify({ userId: 1, username: 'alice' }));
+      localStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
 
       service.logout().subscribe({ error: () => {} });
       httpMock.expectOne('/api/auth/logout').flush(null, { status: 500, statusText: 'Error' });

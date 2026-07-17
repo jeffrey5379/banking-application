@@ -96,7 +96,7 @@ class AccountServiceTest {
         AccountSummaryResponse result = accountService.createAccount(new CreateAccountRequest(Currency.EUR));
 
         assertThat(result.currency()).isEqualTo(Currency.EUR);
-        assertThat(result.userId()).isEqualTo(1L);
+        assertThat(result.userId()).isEqualTo(alice.getPublicId());
         assertThat(result.username()).isEqualTo("alice");
         verify(accountRepository).save(any(Account.class));
     }
@@ -242,7 +242,7 @@ class AccountServiceTest {
         BigDecimal converted = new BigDecimal("108.6957");
 
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(accountRepository.findById(20L)).thenReturn(Optional.of(usdAccount));
+        when(accountRepository.findByPublicId(usdAccount.getPublicId())).thenReturn(Optional.of(usdAccount));
         when(exchangeRateService.getRate(Currency.EUR, Currency.USD)).thenReturn(rate);
         when(exchangeRateService.convert(new BigDecimal("100.00"), Currency.EUR, Currency.USD)).thenReturn(converted);
         when(accountRepository.save(any())).thenReturn(eurAccount, usdAccount);
@@ -254,7 +254,7 @@ class AccountServiceTest {
         when(operationRepository.save(any(Operation.class))).thenReturn(outOp, inOp);
 
         List<OperationResponse> result = accountService.exchange(10L,
-                new ExchangeRequest(new BigDecimal("100.00"), 20L));
+                new ExchangeRequest(new BigDecimal("100.00"), usdAccount.getPublicId()));
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).type()).isEqualTo(OperationType.EXCHANGE_OUT);
@@ -267,9 +267,10 @@ class AccountServiceTest {
     @Test
     void exchange_sameAccount_throwsIllegalArgumentException() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(accountRepository.findByPublicId(eurAccount.getPublicId())).thenReturn(Optional.of(eurAccount));
 
         assertThatThrownBy(() -> accountService.exchange(10L,
-                new ExchangeRequest(new BigDecimal("100.00"), 10L)))
+                new ExchangeRequest(new BigDecimal("100.00"), eurAccount.getPublicId())))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("same account");
     }
@@ -277,10 +278,10 @@ class AccountServiceTest {
     @Test
     void exchange_insufficientFunds_throwsInsufficientFundsException() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(accountRepository.findById(20L)).thenReturn(Optional.of(usdAccount));
+        when(accountRepository.findByPublicId(usdAccount.getPublicId())).thenReturn(Optional.of(usdAccount));
 
         assertThatThrownBy(() -> accountService.exchange(10L,
-                new ExchangeRequest(new BigDecimal("5000.00"), 20L)))
+                new ExchangeRequest(new BigDecimal("5000.00"), usdAccount.getPublicId())))
                 .isInstanceOf(InsufficientFundsException.class);
     }
 
@@ -299,7 +300,7 @@ class AccountServiceTest {
 
         OperationResponse result = accountService.getTransaction(5L);
 
-        assertThat(result.id()).isEqualTo(5L);
+        assertThat(result.id()).isEqualTo(op.getPublicId());
         assertThat(result.type()).isEqualTo(OperationType.CREDIT);
     }
 

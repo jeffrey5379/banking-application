@@ -60,20 +60,20 @@ public class DataSeeder implements CommandLineRunner {
         var aliceGbp = accountService.createAccount(new CreateAccountRequest(Currency.GBP));
 
         // 50 backdated operations inserted directly to get meaningful chart data
-        seedAliceEurHistory(aliceEur.id());
+        seedAliceEurHistory(accountService.resolveAccountId(aliceEur.id()));
 
-        accountService.credit(aliceUsd.id(), new MoneyRequest(new BigDecimal("3000.00"), "Initial deposit USD"));
-        accountService.credit(aliceGbp.id(), new MoneyRequest(new BigDecimal("2000.00"), "Transfer from UK"));
+        accountService.credit(accountService.resolveAccountId(aliceUsd.id()), new MoneyRequest(new BigDecimal("3000.00"), "Initial deposit USD"));
+        accountService.credit(accountService.resolveAccountId(aliceGbp.id()), new MoneyRequest(new BigDecimal("2000.00"), "Transfer from UK"));
 
         setCurrentUser("bob");
         var bobEur = accountService.createAccount(new CreateAccountRequest(Currency.EUR));
         var bobChf = accountService.createAccount(new CreateAccountRequest(Currency.CHF));
-        accountService.credit(bobEur.id(), new MoneyRequest(new BigDecimal("10000.00"), "Initial deposit"));
-        accountService.credit(bobChf.id(), new MoneyRequest(new BigDecimal("4500.00"), "Swiss savings"));
+        accountService.credit(accountService.resolveAccountId(bobEur.id()), new MoneyRequest(new BigDecimal("10000.00"), "Initial deposit"));
+        accountService.credit(accountService.resolveAccountId(bobChf.id()), new MoneyRequest(new BigDecimal("4500.00"), "Swiss savings"));
 
         setCurrentUser("carol");
         var carolUsd = accountService.createAccount(new CreateAccountRequest(Currency.USD));
-        accountService.credit(carolUsd.id(), new MoneyRequest(new BigDecimal("7000.00"), "Initial deposit"));
+        accountService.credit(accountService.resolveAccountId(carolUsd.id()), new MoneyRequest(new BigDecimal("7000.00"), "Initial deposit"));
 
         SecurityContextHolder.clearContext();
         log.info("Data seeding complete.");

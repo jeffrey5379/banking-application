@@ -124,8 +124,8 @@ export class AccountDetailEffects {
   submitCredit$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitCredit),
-      exhaustMap(({ accountId, req }) =>
-        this.bankService.credit(accountId, req).pipe(
+      exhaustMap(({ accountId, req, idempotencyKey }) =>
+        this.bankService.credit(accountId, req, idempotencyKey).pipe(
           map((transaction) => AccountDetailActions.submitCreditSuccess({ transaction })),
           catchError((e) =>
             of(AccountDetailActions.submitCreditFailure({ error: e.error?.message ?? e.message ?? 'Credit operation failed.' })),
@@ -138,8 +138,8 @@ export class AccountDetailEffects {
   submitDebit$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitDebit),
-      exhaustMap(({ accountId, req }) =>
-        this.bankService.debit(accountId, req).pipe(
+      exhaustMap(({ accountId, req, idempotencyKey }) =>
+        this.bankService.debit(accountId, req, idempotencyKey).pipe(
           map((transaction) => AccountDetailActions.submitDebitSuccess({ transaction })),
           catchError((e) =>
             of(AccountDetailActions.submitDebitFailure({ error: e.error?.message ?? e.message ?? 'Debit operation failed.' })),
@@ -152,14 +152,49 @@ export class AccountDetailEffects {
   submitExchange$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitExchange),
-      exhaustMap(({ accountId, req }) =>
-        this.bankService.exchange(accountId, req).pipe(
+      exhaustMap(({ accountId, req, idempotencyKey }) =>
+        this.bankService.exchange(accountId, req, idempotencyKey).pipe(
           map((transactions) => AccountDetailActions.submitExchangeSuccess({ transactions })),
           catchError((e) =>
             of(AccountDetailActions.submitExchangeFailure({ error: e.error?.message ?? e.message ?? 'Exchange operation failed.' })),
           ),
         ),
       ),
+    ),
+  );
+
+  refreshAccount$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(AccountDetailActions.refreshAccount),
+      switchMap(({ accountId }) =>
+        this.bankService.getAccountSummary(accountId).pipe(
+          map((account) => AccountDetailActions.loadAccountSuccess({ account })),
+          catchError(() => of()),
+        ),
+      ),
+    ),
+  );
+
+  // Whatever actually happened on the server (success, or a lost response after the server
+  // already committed) - resync the account's true state after any failed critical operation,
+  // so the UI never keeps showing a balance/history that no longer matches the backend.
+  resyncOnFailure$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(
+        AccountDetailActions.submitCreditFailure,
+        AccountDetailActions.submitDebitFailure,
+        AccountDetailActions.submitExchangeFailure,
+      ),
+      withLatestFrom(this.store.select(selectAccountId)),
+      switchMap(([, accountId]) => {
+        if (!accountId) return of();
+        return [
+          AccountDetailActions.refreshAccount({ accountId }),
+          AccountDetailActions.loadTransactions({ accountId, page: 0 }),
+          AccountDetailActions.loadBalanceHistory({ accountId }),
+          AccountDetailActions.loadSummary({ accountId }),
+        ];
+      }),
     ),
   );
 

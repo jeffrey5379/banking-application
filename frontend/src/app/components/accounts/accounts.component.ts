@@ -1,9 +1,10 @@
-import { Component, OnInit, ChangeDetectionStrategy, inject } from "@angular/core";
+import { Component, OnInit, ChangeDetectionStrategy, DestroyRef, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { Router } from "@angular/router";
 import { FormsModule } from "@angular/forms";
 import { Store } from "@ngrx/store";
-import { toSignal } from "@angular/core/rxjs-interop";
+import { Actions, ofType } from "@ngrx/effects";
+import { toSignal, takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { Account, Currency } from "../../models/bank.models";
 import { AuthService } from "../../services/auth.service";
 import { AccountsActions } from "../../store/accounts/accounts.actions";
@@ -26,7 +27,7 @@ import {
         <div>
           <h1>Accounts</h1>
         </div>
-        <button class="btn btn-primary" (click)="showAddAccount = true">
+        <button class="btn btn-primary" (click)="openAddAccount()">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path
               d="M7 1v12M1 7h12"
@@ -100,7 +101,7 @@ import {
               <button
                 class="btn btn-primary btn-sm"
                 style="margin-top:8px"
-                (click)="showAddAccount = true"
+                (click)="openAddAccount()"
               >
                 Open first account
               </button>
@@ -132,6 +133,9 @@ import {
               <p class="text-muted text-sm">
                 The new account will be opened with a zero balance in the selected currency.
               </p>
+              @if (error()) {
+                <div class="error-banner">{{ error() }}</div>
+              }
             </div>
             <div class="modal-footer">
               <button class="btn btn-ghost" (click)="showAddAccount = false">Cancel</button>
@@ -140,7 +144,7 @@ import {
                 (click)="addAccount()"
                 [disabled]="addingAccount()"
               >
-                {{ addingAccount() ? "Opening…" : "Open Account" }}
+                {{ addingAccount() ? "Opening..." : error() ? "Retry" : "Open Account" }}
               </button>
             </div>
           </div>
@@ -243,6 +247,8 @@ export class AccountsComponent implements OnInit {
   private store = inject(Store);
   private authService = inject(AuthService);
   private router = inject(Router);
+  private actions$ = inject(Actions);
+  private destroyRef = inject(DestroyRef);
 
   accounts = toSignal(this.store.select(selectAccounts), { initialValue: [] as Account[] });
   loading = toSignal(this.store.select(selectAccountsLoading), { initialValue: false });
@@ -253,6 +259,10 @@ export class AccountsComponent implements OnInit {
   showAddAccount = false;
   newCurrency: Currency = "EUR";
 
+  // Fixed for the lifetime of one modal session so a retry after a failure reuses the same
+  // key and is safely deduplicated by the backend.
+  private createAccountIdempotencyKey = crypto.randomUUID();
+
   ngOnInit() {
     const user = this.authService.getUser();
     if (!user) {
@@ -260,20 +270,36 @@ export class AccountsComponent implements OnInit {
       return;
     }
     this.store.dispatch(AccountsActions.loadAccounts({ userId: user.userId }));
+
+    // Only a *Success* closes the modal. On failure it stays open (showing the error inline)
+    // so a manual retry reuses the same idempotency key instead of starting a fresh attempt.
+    this.actions$
+      .pipe(
+        ofType(AccountsActions.createAccountSuccess),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        this.showAddAccount = false;
+        this.newCurrency = "EUR";
+      });
   }
 
   goToAccount(account: Account) {
     this.router.navigate(["/accounts", account.id]);
   }
 
+  openAddAccount() {
+    this.showAddAccount = true;
+    this.createAccountIdempotencyKey = crypto.randomUUID();
+  }
+
   addAccount() {
-    this.store.dispatch(AccountsActions.createAccount({ currency: this.newCurrency }));
-    this.store.select(selectAddingAccount).subscribe((loading) => {
-      if (!loading) {
-        this.showAddAccount = false;
-        this.newCurrency = "EUR";
-      }
-    });
+    this.store.dispatch(
+      AccountsActions.createAccount({
+        currency: this.newCurrency,
+        idempotencyKey: this.createAccountIdempotencyKey,
+      }),
+    );
   }
 
   onOverlayClick(_event: MouseEvent) {

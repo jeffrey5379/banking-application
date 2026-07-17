@@ -102,10 +102,9 @@ All account endpoints operate on the authenticated user's own accounts. Cross-us
 
 Rates are stored in the database (EUR as pivot currency) and cached in memory for **5 minutes** (Caffeine).
 
-| Method | Path                              | Description             |
-| ------ | --------------------------------- | ----------------------- |
-| GET    | `/api/exchange-rates`             | All rate pairs (cached) |
-| GET    | `/api/exchange-rates/{from}/{to}` | Specific rate (cached)  |
+| Method | Path                  | Description             |
+| ------ | --------------------- | ----------------------- |
+| GET    | `/api/exchange-rates` | All rate pairs (cached) |
 
 Supported currencies and seeded rates:
 

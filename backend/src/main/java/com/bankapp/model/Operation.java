@@ -17,7 +17,7 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(of = "uuid")
+@EqualsAndHashCode(of = "publicId")
 public class Operation {
 
     @Id
@@ -25,7 +25,7 @@ public class Operation {
     private Long id;
 
     @Column(nullable = false, unique = true, updatable = false)
-    private UUID uuid = UUID.randomUUID();
+    private UUID publicId = UUID.randomUUID();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "account_id", nullable = false)
@@ -58,6 +58,6 @@ public class Operation {
 
     @Override
     public String toString() {
-        return "Operation{uuid=" + uuid + ", type=" + type + ", amount=" + amount + ", currency=" + currency + "}";
+        return "Operation{publicId=" + publicId + ", type=" + type + ", amount=" + amount + ", currency=" + currency + "}";
     }
 }

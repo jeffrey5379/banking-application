@@ -266,6 +266,9 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                     placeholder="e.g. Salary"
                   />
                 </div>
+                @if (error()) {
+                  <div class="error-banner">{{ error() }}</div>
+                }
               </div>
               <div class="modal-footer">
                 <button class="btn btn-ghost" (click)="closeModal()">
@@ -276,7 +279,7 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                   (click)="submitCredit()"
                   [disabled]="operationLoading()"
                 >
-                  {{ operationLoading() ? "…" : "Add Money" }}
+                  {{ operationLoading() ? "Processing..." : error() ? "Retry" : "Add Money" }}
                 </button>
               </div>
             }
@@ -313,6 +316,9 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                   Available: {{ formatAmount(account()?.balance || 0) }}
                   {{ account()?.currency }}
                 </p>
+                @if (error()) {
+                  <div class="error-banner">{{ error() }}</div>
+                }
               </div>
               <div class="modal-footer">
                 <button class="btn btn-ghost" (click)="closeModal()">
@@ -323,7 +329,7 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                   (click)="submitDebit()"
                   [disabled]="operationLoading()"
                 >
-                  {{ operationLoading() ? "…" : "Debit" }}
+                  {{ operationLoading() ? "Processing..." : error() ? "Retry" : "Debit" }}
                 </button>
               </div>
             }
@@ -375,6 +381,9 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                     </span>
                   </div>
                 }
+                @if (error()) {
+                  <div class="error-banner">{{ error() }}</div>
+                }
               </div>
               <div class="modal-footer">
                 <button class="btn btn-ghost" (click)="closeModal()">
@@ -385,7 +394,7 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                   (click)="submitExchange()"
                   [disabled]="operationLoading() || !targetAccountId"
                 >
-                  {{ operationLoading() ? "…" : "Exchange" }}
+                  {{ operationLoading() ? "Processing..." : error() ? "Retry" : "Exchange" }}
                 </button>
               </div>
             }
@@ -597,7 +606,11 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
   activeModal: ModalType = null;
   modalAmount: number | null = null;
   modalDesc = "";
-  targetAccountId: number | null = null;
+  targetAccountId: string | null = null;
+
+  // Fixed for the lifetime of one modal session so a retry after a failure (same modal,
+  // same inputs) reuses the same key and is safely deduplicated by the backend.
+  private operationIdempotencyKey = crypto.randomUUID();
 
   lineChartData: ChartData<"line"> = { labels: [], datasets: [] };
 
@@ -674,18 +687,17 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    const id = Number(this.route.snapshot.paramMap.get("id"));
+    const id = this.route.snapshot.paramMap.get("id")!;
     this.store.dispatch(AccountDetailActions.loadAccount({ id }));
 
+    // Only a *Success* closes the modal. On failure it stays open (showing the error inline)
+    // so a manual retry reuses the same idempotency key instead of starting a fresh attempt.
     this.actions$
       .pipe(
         ofType(
           AccountDetailActions.submitCreditSuccess,
           AccountDetailActions.submitDebitSuccess,
           AccountDetailActions.submitExchangeSuccess,
-          AccountDetailActions.submitCreditFailure,
-          AccountDetailActions.submitDebitFailure,
-          AccountDetailActions.submitExchangeFailure,
         ),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -702,6 +714,7 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
     this.modalAmount = null;
     this.modalDesc = "";
     this.targetAccountId = null;
+    this.operationIdempotencyKey = crypto.randomUUID();
   }
 
   closeModal() {
@@ -715,6 +728,7 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
       AccountDetailActions.submitCredit({
         accountId: account.id,
         req: { amount: this.modalAmount, description: this.modalDesc },
+        idempotencyKey: this.operationIdempotencyKey,
       }),
     );
   }
@@ -726,6 +740,7 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
       AccountDetailActions.submitDebit({
         accountId: account.id,
         req: { amount: this.modalAmount, description: this.modalDesc },
+        idempotencyKey: this.operationIdempotencyKey,
       }),
     );
   }
@@ -740,6 +755,7 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
           amount: this.modalAmount,
           targetAccountId: this.targetAccountId,
         },
+        idempotencyKey: this.operationIdempotencyKey,
       }),
     );
   }
@@ -763,7 +779,7 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
     return this.modalAmount * this.getExchangeRate();
   }
 
-  goToTransaction(id: number) {
+  goToTransaction(id: string) {
     this.router.navigate(["/transactions", id]);
   }
 

@@ -8,18 +8,18 @@ const blankState = (): AccountDetailState =>
   reducer(undefined, { type: '@@INIT' } as any);
 
 const mockAccount: AccountDetail = {
-  id: 1,
+  id: '1',
   accountNumber: 'ACC-001',
   currency: 'EUR',
   balance: 1000,
-  userId: 1,
+  userId: '1',
   username: 'alice',
   transactions: [],
 };
 
 const tx = (id: number, accountId = 1, type: Transaction['type'] = 'CREDIT'): Transaction => ({
-  id,
-  accountId,
+  id: String(id),
+  accountId: String(accountId),
   accountNumber: 'ACC-001',
   type,
   amount: 100,
@@ -32,8 +32,8 @@ const tx = (id: number, accountId = 1, type: Transaction['type'] = 'CREDIT'): Tr
 describe('AccountDetailReducer', () => {
   describe('loadAccount', () => {
     it('resets state and sets loading when navigating to a new account', () => {
-      const state = reducer(undefined, AccountDetailActions.loadAccount({ id: 5 }));
-      expect(state.accountId).toBe(5);
+      const state = reducer(undefined, AccountDetailActions.loadAccount({ id: '5' }));
+      expect(state.accountId).toBe('5');
       expect(state.loading).toBe(true);
       expect(state.account).toBeNull();
       expect(state.transactions).toEqual([]);
@@ -42,12 +42,12 @@ describe('AccountDetailReducer', () => {
     it('keeps existing data without spinner when the same account is already cached', () => {
       const cached: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: mockAccount,
         transactions: [tx(10)],
         loading: false,
       };
-      const state = reducer(cached, AccountDetailActions.loadAccount({ id: 1 }));
+      const state = reducer(cached, AccountDetailActions.loadAccount({ id: '1' }));
       expect(state.account).toEqual(mockAccount);
       expect(state.loading).toBe(false);
       expect(state.transactions).toHaveLength(1);
@@ -56,12 +56,12 @@ describe('AccountDetailReducer', () => {
     it('resets state when switching to a different account even if one is already loaded', () => {
       const cached: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: mockAccount,
         loading: false,
       };
-      const state = reducer(cached, AccountDetailActions.loadAccount({ id: 2 }));
-      expect(state.accountId).toBe(2);
+      const state = reducer(cached, AccountDetailActions.loadAccount({ id: '2' }));
+      expect(state.accountId).toBe('2');
       expect(state.account).toBeNull();
       expect(state.loading).toBe(true);
     });
@@ -104,7 +104,7 @@ describe('AccountDetailReducer', () => {
           last: true,
         }),
       );
-      expect(state.transactions.map((t) => t.id)).toEqual([1, 2]);
+      expect(state.transactions.map((t) => t.id)).toEqual(['1', '2']);
       expect(state.hasMore).toBe(false);
       expect(state.totalElements).toBe(2);
     });
@@ -124,7 +124,7 @@ describe('AccountDetailReducer', () => {
           last: true,
         }),
       );
-      expect(state.transactions.map((t) => t.id)).toEqual([1, 2, 3, 4]);
+      expect(state.transactions.map((t) => t.id)).toEqual(['1', '2', '3', '4']);
       expect(state.currentPage).toBe(1);
     });
 
@@ -143,7 +143,7 @@ describe('AccountDetailReducer', () => {
           last: false,
         }),
       );
-      expect(state.transactions.map((t) => t.id)).toEqual([1, 2, 3]);
+      expect(state.transactions.map((t) => t.id)).toEqual(['1', '2', '3']);
     });
   });
 
@@ -151,7 +151,7 @@ describe('AccountDetailReducer', () => {
     it('prepends transaction, updates balance, and increments totalElements', () => {
       const existing: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: { ...mockAccount, balance: 1000 },
         transactions: [tx(5)],
         totalElements: 1,
@@ -170,7 +170,7 @@ describe('AccountDetailReducer', () => {
     it('prepends transaction and updates balance', () => {
       const existing: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: { ...mockAccount, balance: 1000 },
         transactions: [],
         totalElements: 0,
@@ -187,7 +187,7 @@ describe('AccountDetailReducer', () => {
     it('filters to only transactions belonging to the current account', () => {
       const existing: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: { ...mockAccount, balance: 1000 },
         transactions: [],
         totalElements: 0,
@@ -199,13 +199,13 @@ describe('AccountDetailReducer', () => {
         AccountDetailActions.submitExchangeSuccess({ transactions: [myTx, otherTx] }),
       );
       expect(state.transactions).toHaveLength(1);
-      expect(state.transactions[0].accountId).toBe(1);
+      expect(state.transactions[0].accountId).toBe('1');
     });
 
     it('updates balance from the EXCHANGE_OUT transaction', () => {
       const existing: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: { ...mockAccount, balance: 1000 },
         transactions: [],
         totalElements: 0,
@@ -235,7 +235,7 @@ describe('AccountDetailReducer', () => {
     it('resets the entire state to initial', () => {
       const loaded: AccountDetailState = {
         ...blankState(),
-        accountId: 1,
+        accountId: '1',
         account: mockAccount,
         transactions: [tx(1), tx(2)],
         exchangeRates: { EUR_USD: 0.92 },
