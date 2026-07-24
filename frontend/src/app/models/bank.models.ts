@@ -3,7 +3,9 @@ export type TransactionType =
   | "CREDIT"
   | "DEBIT"
   | "EXCHANGE_IN"
-  | "EXCHANGE_OUT";
+  | "EXCHANGE_OUT"
+  | "TRANSFER_IN"
+  | "TRANSFER_OUT";
 
 export interface User {
   id: string;
@@ -40,14 +42,20 @@ export interface Transaction {
   relatedAccountNumber?: string;
 }
 
-export interface MoneyRequest {
-  amount: number;
-  description?: string;
-}
-
 export interface ExchangeRequest {
   amount: number;
   targetAccountId: string;
+}
+
+export interface TransferRequest {
+  amount: number;
+  targetUsername: string;
+  targetAccountNumber: string;
+  description?: string;
+}
+
+export interface RecipientCheckResponse {
+  valid: boolean;
 }
 
 export interface CreateAccountRequest {

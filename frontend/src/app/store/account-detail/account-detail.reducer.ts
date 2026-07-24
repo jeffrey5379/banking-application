@@ -105,38 +105,6 @@ export const accountDetailFeature = createFeature({
       stats,
     })),
 
-    on(AccountDetailActions.submitCredit, (state) => ({ ...state, operationLoading: true, error: null })),
-    on(AccountDetailActions.submitCreditSuccess, (state, { transaction }) => ({
-      ...state,
-      operationLoading: false,
-      transactions: [transaction, ...state.transactions],
-      totalElements: state.totalElements + 1,
-      account: state.account
-        ? { ...state.account, balance: transaction.balanceAfter }
-        : null,
-    })),
-    on(AccountDetailActions.submitCreditFailure, (state, { error }) => ({
-      ...state,
-      operationLoading: false,
-      error,
-    })),
-
-    on(AccountDetailActions.submitDebit, (state) => ({ ...state, operationLoading: true, error: null })),
-    on(AccountDetailActions.submitDebitSuccess, (state, { transaction }) => ({
-      ...state,
-      operationLoading: false,
-      transactions: [transaction, ...state.transactions],
-      totalElements: state.totalElements + 1,
-      account: state.account
-        ? { ...state.account, balance: transaction.balanceAfter }
-        : null,
-    })),
-    on(AccountDetailActions.submitDebitFailure, (state, { error }) => ({
-      ...state,
-      operationLoading: false,
-      error,
-    })),
-
     on(AccountDetailActions.submitExchange, (state) => ({ ...state, operationLoading: true, error: null })),
     on(AccountDetailActions.submitExchangeSuccess, (state, { transactions }) => {
       const mine = transactions.filter((t) => t.accountId === state.accountId);
@@ -152,6 +120,26 @@ export const accountDetailFeature = createFeature({
       };
     }),
     on(AccountDetailActions.submitExchangeFailure, (state, { error }) => ({
+      ...state,
+      operationLoading: false,
+      error,
+    })),
+
+    on(AccountDetailActions.submitTransfer, (state) => ({ ...state, operationLoading: true, error: null })),
+    on(AccountDetailActions.submitTransferSuccess, (state, { transactions }) => {
+      const mine = transactions.filter((t) => t.accountId === state.accountId);
+      const outgoing = mine.find((t) => t.type === 'TRANSFER_OUT');
+      return {
+        ...state,
+        operationLoading: false,
+        transactions: [...mine, ...state.transactions],
+        totalElements: state.totalElements + mine.length,
+        account: state.account && outgoing
+          ? { ...state.account, balance: outgoing.balanceAfter }
+          : state.account,
+      };
+    }),
+    on(AccountDetailActions.submitTransferFailure, (state, { error }) => ({
       ...state,
       operationLoading: false,
       error,

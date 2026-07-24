@@ -94,8 +94,6 @@ All account endpoints operate on the authenticated user's own accounts. Cross-us
 | GET    | `/api/accounts/{id}/balance-history`             | Balance over time (for chart)                           |
 | GET    | `/api/accounts/{id}/transactions?page=0&size=10` | Paginated transaction history                           |
 | GET    | `/api/accounts/transactions/{txId}`              | Single transaction detail                               |
-| POST   | `/api/accounts/{id}/credit`                      | Deposit `{amount, description}`                         |
-| POST   | `/api/accounts/{id}/debit`                       | Withdraw `{amount, description}`                        |
 | POST   | `/api/accounts/{id}/exchange`                    | Exchange to another account `{amount, targetAccountId}` |
 
 ### Exchange Rates
@@ -119,7 +117,7 @@ Supported currencies and seeded rates:
 
 ### Debit eligibility
 
-Debit operations call an external eligibility service (`${debit.eligibility.url}/debit-eligibility/{userId}`). A Resilience4j circuit breaker wraps the call — if the service is down or times out, the debit is rejected (fail-closed).
+Outgoing transfers call an external eligibility service (`${debit.eligibility.url}/debit-eligibility/{userId}`) before moving funds. A Resilience4j circuit breaker wraps the call — if the service is down or times out, the transfer is rejected (fail-closed).
 
 ---
 
@@ -129,7 +127,7 @@ Debit operations call an external eligibility service (`${debit.eligibility.url}
 | ------------------- | -------------------------------------------------------------------------------------- |
 | `/login`            | Login / Register                                                                       |
 | `/`                 | Dashboard — all accounts, currency totals, open new account                            |
-| `/accounts/:id`     | Account overview — balance chart, paginated transactions, credit/debit/exchange modals |
+| `/accounts/:id`     | Account overview — balance chart, paginated transactions, send/exchange modals         |
 | `/transactions/:id` | Transaction detail — full breakdown with PDF export                                    |
 
 NgRx manages all state. The store has three feature slices:

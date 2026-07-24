@@ -147,42 +147,6 @@ describe('AccountDetailReducer', () => {
     });
   });
 
-  describe('submitCreditSuccess', () => {
-    it('prepends transaction, updates balance, and increments totalElements', () => {
-      const existing: AccountDetailState = {
-        ...blankState(),
-        accountId: '1',
-        account: { ...mockAccount, balance: 1000 },
-        transactions: [tx(5)],
-        totalElements: 1,
-      };
-      const creditTx = { ...tx(10), balanceAfter: 1100 };
-      const state = reducer(existing, AccountDetailActions.submitCreditSuccess({ transaction: creditTx }));
-      expect(state.transactions[0]).toEqual(creditTx);
-      expect(state.transactions).toHaveLength(2);
-      expect(state.account?.balance).toBe(1100);
-      expect(state.totalElements).toBe(2);
-      expect(state.operationLoading).toBe(false);
-    });
-  });
-
-  describe('submitDebitSuccess', () => {
-    it('prepends transaction and updates balance', () => {
-      const existing: AccountDetailState = {
-        ...blankState(),
-        accountId: '1',
-        account: { ...mockAccount, balance: 1000 },
-        transactions: [],
-        totalElements: 0,
-      };
-      const debitTx = { ...tx(20), type: 'DEBIT' as const, balanceAfter: 900 };
-      const state = reducer(existing, AccountDetailActions.submitDebitSuccess({ transaction: debitTx }));
-      expect(state.account?.balance).toBe(900);
-      expect(state.transactions[0]).toEqual(debitTx);
-      expect(state.operationLoading).toBe(false);
-    });
-  });
-
   describe('submitExchangeSuccess', () => {
     it('filters to only transactions belonging to the current account', () => {
       const existing: AccountDetailState = {
@@ -219,11 +183,46 @@ describe('AccountDetailReducer', () => {
     });
   });
 
-  describe('submitCreditFailure / submitDebitFailure / submitExchangeFailure', () => {
+  describe('submitTransferSuccess', () => {
+    it('filters to only transactions belonging to the current account', () => {
+      const existing: AccountDetailState = {
+        ...blankState(),
+        accountId: '1',
+        account: { ...mockAccount, balance: 1000 },
+        transactions: [],
+        totalElements: 0,
+      };
+      const myTx = tx(10, 1, 'TRANSFER_OUT');
+      const otherTx = tx(11, 2, 'TRANSFER_IN');
+      const state = reducer(
+        existing,
+        AccountDetailActions.submitTransferSuccess({ transactions: [myTx, otherTx] }),
+      );
+      expect(state.transactions).toHaveLength(1);
+      expect(state.transactions[0].accountId).toBe('1');
+    });
+
+    it('updates balance from the TRANSFER_OUT transaction', () => {
+      const existing: AccountDetailState = {
+        ...blankState(),
+        accountId: '1',
+        account: { ...mockAccount, balance: 1000 },
+        transactions: [],
+        totalElements: 0,
+      };
+      const outTx = { ...tx(10, 1, 'TRANSFER_OUT'), balanceAfter: 700 };
+      const state = reducer(
+        existing,
+        AccountDetailActions.submitTransferSuccess({ transactions: [outTx] }),
+      );
+      expect(state.account?.balance).toBe(700);
+    });
+  });
+
+  describe('submitExchangeFailure / submitTransferFailure', () => {
     it.each([
-      ['credit', AccountDetailActions.submitCreditFailure({ error: 'Credit failed' })],
-      ['debit', AccountDetailActions.submitDebitFailure({ error: 'Debit failed' })],
       ['exchange', AccountDetailActions.submitExchangeFailure({ error: 'Exchange failed' })],
+      ['transfer', AccountDetailActions.submitTransferFailure({ error: 'Transfer failed' })],
     ])('%s failure stores error and clears operationLoading', (_label, action) => {
       const state = reducer({ ...blankState(), operationLoading: true }, action);
       expect(state.operationLoading).toBe(false);

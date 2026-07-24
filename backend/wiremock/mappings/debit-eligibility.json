@@ -1,10 +1,10 @@
 {
   "mappings": [
     {
-      "name": "debit-eligibility - allowed for user 1",
+      "name": "debit-eligibility - allowed for user 2",
       "request": {
         "method": "GET",
-        "url": "/debit-eligibility/1"
+        "url": "/debit-eligibility/2"
       },
       "response": {
         "status": 200,
@@ -17,10 +17,10 @@
       }
     },
     {
-      "name": "debit-eligibility - denied for user 2",
+      "name": "debit-eligibility - denied for user 3",
       "request": {
         "method": "GET",
-        "url": "/debit-eligibility/2"
+        "url": "/debit-eligibility/3"
       },
       "response": {
         "status": 200,
@@ -33,10 +33,10 @@
       }
     },
     {
-      "name": "debit-eligibility - server error for user 3",
+      "name": "debit-eligibility - server error for user 4",
       "request": {
         "method": "GET",
-        "url": "/debit-eligibility/3"
+        "url": "/debit-eligibility/4"
       },
       "response": {
         "status": 500,

@@ -136,7 +136,7 @@ class AccountSecurityTest {
     private Operation buildOperation(Account account) {
         Operation op = new Operation();
         op.setAccount(account);
-        op.setType(OperationType.CREDIT);
+        op.setType(OperationType.TRANSFER_IN);
         op.setAmount(new BigDecimal("100.00"));
         op.setCurrency(account.getCurrency());
         op.setBalanceAfter(new BigDecimal("100.00"));

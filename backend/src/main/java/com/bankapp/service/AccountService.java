@@ -6,9 +6,10 @@ import com.bankapp.dto.BankDtos.AccountSummaryResponse;
 import com.bankapp.dto.BankDtos.BalancePoint;
 import com.bankapp.dto.BankDtos.CreateAccountRequest;
 import com.bankapp.dto.BankDtos.ExchangeRequest;
-import com.bankapp.dto.BankDtos.MoneyRequest;
 import com.bankapp.dto.BankDtos.OperationPage;
 import com.bankapp.dto.BankDtos.OperationResponse;
+import com.bankapp.dto.BankDtos.RecipientCheckResponse;
+import com.bankapp.dto.BankDtos.TransferRequest;
 import com.bankapp.exception.DebitNotAllowedException;
 import com.bankapp.exception.InsufficientFundsException;
 import com.bankapp.exception.ResourceNotFoundException;
@@ -32,6 +33,7 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -102,44 +104,18 @@ public class AccountService {
         return toSummary(getAccount(accountId));
     }
 
-    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
-    public OperationResponse credit(Long accountId, MoneyRequest req) {
-        Account account = getAccount(accountId);
-        account.setBalance(account.getBalance().add(req.amount()));
-        accountRepository.save(account);
-
-        Operation op = buildOperation(account, OperationType.CREDIT,
-                req.amount(), account.getCurrency(), account.getBalance(),
-                req.description() != null ? req.description() : "Credit", null, null);
-
-        return toOperationResponse(operationRepository.save(op));
-    }
-
-    @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")
-    public OperationResponse debit(Long accountId, MoneyRequest req) {
-        Account account = getAccount(accountId);
-        if (!debitEligibilityClient.isDebitAllowed(account.getUser().getId())) {
-            throw new DebitNotAllowedException("Debit not allowed. Please contact support for details");
-        }
-        if (account.getBalance().compareTo(req.amount()) < 0) {
-            throw new InsufficientFundsException(
-                    "Insufficient funds. Balance: " + account.getBalance() + " " + account.getCurrency());
-        }
-        account.setBalance(account.getBalance().subtract(req.amount()));
-        accountRepository.save(account);
-
-        Operation op = buildOperation(account, OperationType.DEBIT,
-                req.amount(), account.getCurrency(), account.getBalance(),
-                req.description() != null ? req.description() : "Debit", null, null);
-        return toOperationResponse(operationRepository.save(op));
-    }
-
     @PreAuthorize("@accountSecurity.isOwner(#sourceAccountId, authentication)")
     public List<OperationResponse> exchange(Long sourceAccountId, ExchangeRequest req) {
         Account source = getAccount(sourceAccountId);
         Account target = accountRepository.findByPublicId(req.targetAccountId())
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found: " + req.targetAccountId()));
 
+        // Exchange only moves money between the caller's own accounts. Sending to someone
+        // else's account - even if you happen to know its UUID - must go through transfer(),
+        // which requires proving you know the recipient's username AND account number.
+        if (!target.getUser().getId().equals(source.getUser().getId())) {
+            throw new ResourceNotFoundException("Account not found: " + req.targetAccountId());
+        }
         if (source.getId().equals(target.getId())) {
             throw new IllegalArgumentException("Cannot exchange between the same account");
         }
@@ -150,19 +126,79 @@ public class AccountService {
 
         BigDecimal rate = exchangeRateService.getRate(source.getCurrency(), target.getCurrency());
         BigDecimal convertedAmount = exchangeRateService.convert(req.amount(), source.getCurrency(), target.getCurrency());
+        String desc = String.format("Exchange %.2f %s for %.2f %s (rate: %.2f)",
+                req.amount(), source.getCurrency(), convertedAmount, target.getCurrency(), rate);
 
-        source.setBalance(source.getBalance().subtract(req.amount()));
+        return moveFunds(source, target, req.amount(), convertedAmount, rate,
+                OperationType.EXCHANGE_OUT, OperationType.EXCHANGE_IN, desc, desc);
+    }
+
+    // Read-only pre-check so the frontend can validate a recipient before the user commits to
+    // an actual transfer. Uses the exact same matching rule as transfer() itself, so "valid"
+    // here always means transfer() will accept it. Deliberately does not reveal the recipient's
+    // account currency or any other account detail to the sender.
+    @Transactional(readOnly = true)
+    public RecipientCheckResponse checkRecipient(String username, String accountNumber) {
+        return new RecipientCheckResponse(resolveVerifiedRecipient(username, accountNumber).isPresent());
+    }
+
+    @PreAuthorize("@accountSecurity.isOwner(#sourceAccountId, authentication)")
+    public List<OperationResponse> transfer(Long sourceAccountId, TransferRequest req) {
+
+        Account source = getAccount(sourceAccountId);
+
+        if (!debitEligibilityClient.isDebitAllowed(source.getUser().getId())) {
+            throw new DebitNotAllowedException("Debit not allowed. Please contact support for details");
+        }
+
+        // Both the username and the account number must match the SAME account -
+        // this is the "recipient verification" step
+        Account target = resolveVerifiedRecipient(req.targetUsername(), req.targetAccountNumber())
+                .orElseThrow(() -> new ResourceNotFoundException("Recipient not found"));
+        if (source.getId().equals(target.getId())) {
+            throw new IllegalArgumentException("Cannot transfer to the same account");
+        }
+        if (source.getBalance().compareTo(req.amount()) < 0) {
+            throw new InsufficientFundsException(
+                    "Insufficient funds. Balance: " + source.getBalance() + " " + source.getCurrency());
+        }
+
+        BigDecimal rate = exchangeRateService.getRate(source.getCurrency(), target.getCurrency());
+        BigDecimal convertedAmount = exchangeRateService.convert(req.amount(), source.getCurrency(), target.getCurrency());
+
+        String note = req.description() != null && !req.description().isBlank() ? " - " + req.description() : "";
+        String outDesc = String.format("Transfer to %s (%s)%s", target.getUser().getUsername(), target.getAccountNumber(), note);
+        String inDesc = String.format("Transfer from %s (%s)%s", source.getUser().getUsername(), source.getAccountNumber(), note);
+
+        return moveFunds(source, target, req.amount(), convertedAmount, rate,
+                OperationType.TRANSFER_OUT, OperationType.TRANSFER_IN, outDesc, inDesc);
+    }
+
+    // Trusted internal transfer for seed/administrative data (currently only DataSeeder). Skips
+    // the debit-eligibility check and username/account-number recipient verification that guard
+    // the public transfer() endpoint - the caller already has resolved, trusted account ids, not
+    // user-supplied ones. Not wired to any controller; must stay that way.
+    public List<OperationResponse> transferInternal(Long sourceAccountId, Long targetAccountId,
+                                                     BigDecimal amount, String outDescription, String inDescription) {
+        Account source = getAccount(sourceAccountId);
+        Account target = getAccount(targetAccountId);
+        BigDecimal rate = exchangeRateService.getRate(source.getCurrency(), target.getCurrency());
+        BigDecimal convertedAmount = exchangeRateService.convert(amount, source.getCurrency(), target.getCurrency());
+
+        return moveFunds(source, target, amount, convertedAmount, rate,
+                OperationType.TRANSFER_OUT, OperationType.TRANSFER_IN, outDescription, inDescription);
+    }
+
+    private List<OperationResponse> moveFunds(Account source, Account target, BigDecimal amount, BigDecimal convertedAmount,
+                                              BigDecimal rate, OperationType outType, OperationType inType,
+                                              String outDescription, String inDescription) {
+        source.setBalance(source.getBalance().subtract(amount));
         target.setBalance(target.getBalance().add(convertedAmount));
         accountRepository.save(source);
         accountRepository.save(target);
 
-        String desc = String.format("Exchange %.2f %s for %.2f %s (rate: %.2f)",
-                req.amount(), source.getCurrency(), convertedAmount, target.getCurrency(), rate);
-
-        Operation outOp = buildOperation(source, OperationType.EXCHANGE_OUT,
-                req.amount(), source.getCurrency(), source.getBalance(), desc, rate, target.getId());
-        Operation inOp = buildOperation(target, OperationType.EXCHANGE_IN,
-                convertedAmount, target.getCurrency(), target.getBalance(), desc, rate, source.getId());
+        Operation outOp = buildOperation(source, outType, amount, source.getCurrency(), source.getBalance(), outDescription, rate, target.getId());
+        Operation inOp = buildOperation(target, inType, convertedAmount, target.getCurrency(), target.getBalance(), inDescription, rate, source.getId());
 
         return List.of(
                 toOperationResponse(operationRepository.save(outOp)),
@@ -199,9 +235,9 @@ public class AccountService {
     @Transactional(readOnly = true)
     public AccountStatsResponse getAccountStats(Long accountId) {
         BigDecimal totalIn = operationRepository.sumAmountByAccountIdAndTypes(
-                accountId, List.of(OperationType.CREDIT, OperationType.EXCHANGE_IN));
+                accountId, List.of(OperationType.EXCHANGE_IN, OperationType.TRANSFER_IN));
         BigDecimal totalOut = operationRepository.sumAmountByAccountIdAndTypes(
-                accountId, List.of(OperationType.DEBIT, OperationType.EXCHANGE_OUT));
+                accountId, List.of(OperationType.EXCHANGE_OUT, OperationType.TRANSFER_OUT));
         return new AccountStatsResponse(totalIn, totalOut);
     }
 
@@ -222,6 +258,12 @@ public class AccountService {
     private Account getAccount(Long id) {
         return accountRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Account not found: " + id));
+    }
+
+    private Optional<Account> resolveVerifiedRecipient(String username, String accountNumber) {
+        return userRepository.findByUsername(username)
+                .flatMap(user -> accountRepository.findByAccountNumber(accountNumber)
+                        .filter(acc -> acc.getUser().getId().equals(user.getId())));
     }
 
     private Operation buildOperation(Account account, OperationType type, BigDecimal amount,

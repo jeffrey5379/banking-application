@@ -126,6 +126,30 @@ import {
                 />
               </svg>
             }
+            @if (tx()!.type === "TRANSFER_IN") {
+              <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                <circle cx="18" cy="18" r="18" fill="#dcfce7" />
+                <path
+                  d="M11 18h14M19 12l6 6-6 6"
+                  stroke="#16a34a"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            }
+            @if (tx()!.type === "TRANSFER_OUT") {
+              <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                <circle cx="18" cy="18" r="18" fill="#fee2e2" />
+                <path
+                  d="M25 18H11M17 12l-6 6 6 6"
+                  stroke="#dc2626"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            }
           </div>
           <div class="tx-hero-body">
             <span [class]="'badge ' + badgeClass(tx()!.type)">{{
@@ -189,13 +213,17 @@ import {
           }
           @if (tx()!.relatedAccountNumber) {
             <div class="detail-row">
-              <span class="detail-label">Related Account</span>
+              <span class="detail-label">{{ relatedAccountLabel(tx()!.type) }}</span>
               <span class="detail-value">
-                <a
-                  [routerLink]="['/accounts', tx()!.relatedAccountId]"
-                  class="link"
-                  >Account #{{ tx()!.relatedAccountNumber }}</a
-                >
+                @if (isOwnRelatedAccount(tx()!.type)) {
+                  <a
+                    [routerLink]="['/accounts', tx()!.relatedAccountId]"
+                    class="link"
+                    >Account #{{ tx()!.relatedAccountNumber }}</a
+                  >
+                } @else {
+                  Account #{{ tx()!.relatedAccountNumber }}
+                }
               </span>
             </div>
           }
@@ -378,7 +406,7 @@ export class TransactionOverviewComponent implements OnInit, OnDestroy {
     doc.setTextColor(186, 230, 253);
     doc.text("TRANSACTION DETAILS", W / 2, 62, { align: "center" });
 
-    const isPositive = tx.type === "CREDIT" || tx.type === "EXCHANGE_IN";
+    const isPositive = tx.type === "CREDIT" || tx.type === "EXCHANGE_IN" || tx.type === "TRANSFER_IN";
     doc.setTextColor(isPositive ? "#16a34a" : "#dc2626");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(28);
@@ -456,14 +484,14 @@ export class TransactionOverviewComponent implements OnInit, OnDestroy {
   }
 
   txKind(type: string): string {
-    if (type === "CREDIT" || type === "EXCHANGE_IN") return "credit";
+    if (type === "CREDIT" || type === "EXCHANGE_IN" || type === "TRANSFER_IN") return "credit";
     if (type === "EXCHANGE_OUT") return "exchange";
     return "debit";
   }
 
   badgeClass(type: string): string {
-    if (type === "CREDIT" || type === "EXCHANGE_IN") return "badge-credit";
-    if (type === "DEBIT" || type === "EXCHANGE_OUT") return "badge-debit";
+    if (type === "CREDIT" || type === "EXCHANGE_IN" || type === "TRANSFER_IN") return "badge-credit";
+    if (type === "DEBIT" || type === "EXCHANGE_OUT" || type === "TRANSFER_OUT") return "badge-debit";
     return "badge-exchange";
   }
 
@@ -473,12 +501,27 @@ export class TransactionOverviewComponent implements OnInit, OnDestroy {
       DEBIT: "Debit",
       EXCHANGE_IN: "Exchange In",
       EXCHANGE_OUT: "Exchange Out",
+      TRANSFER_IN: "Transfer In",
+      TRANSFER_OUT: "Transfer Out",
     };
     return map[type] || type;
   }
 
   txSign(type: string): string {
-    return type === "CREDIT" || type === "EXCHANGE_IN" ? "+" : "-";
+    return type === "CREDIT" || type === "EXCHANGE_IN" || type === "TRANSFER_IN" ? "+" : "-";
+  }
+
+  // Exchange's related account is always one of the viewer's own accounts, so it's safe to
+  // link to. A transfer's related account belongs to someone else - the viewer can't open it,
+  // so it's shown as plain text instead of a (403-bound) link.
+  isOwnRelatedAccount(type: string): boolean {
+    return type === "EXCHANGE_IN" || type === "EXCHANGE_OUT";
+  }
+
+  relatedAccountLabel(type: string): string {
+    if (type === "TRANSFER_OUT") return "Sent To";
+    if (type === "TRANSFER_IN") return "Received From";
+    return "Related Account";
   }
 
   formatAmount(amount: number): string {

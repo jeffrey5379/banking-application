@@ -40,24 +40,6 @@ describe('BankService', () => {
 
   // ── Money operations ─────────────────────────────────────────────────────────
 
-  it('credit → POST /api/accounts/:id/credit with amount, description, and Idempotency-Key header', () => {
-    service.credit('3', { amount: 100, description: 'Deposit' }, 'idem-key-2').subscribe();
-    const req = httpMock.expectOne('/api/accounts/3/credit');
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ amount: 100, description: 'Deposit' });
-    expect(req.request.headers.get('Idempotency-Key')).toBe('idem-key-2');
-    req.flush({});
-  });
-
-  it('debit → POST /api/accounts/:id/debit with Idempotency-Key header', () => {
-    service.debit('3', { amount: 50 }, 'idem-key-3').subscribe();
-    const req = httpMock.expectOne('/api/accounts/3/debit');
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ amount: 50 });
-    expect(req.request.headers.get('Idempotency-Key')).toBe('idem-key-3');
-    req.flush({});
-  });
-
   it('exchange → POST /api/accounts/:id/exchange with targetAccountId and Idempotency-Key header', () => {
     service.exchange('4', { amount: 200, targetAccountId: '7' }, 'idem-key-4').subscribe();
     const req = httpMock.expectOne('/api/accounts/4/exchange');
@@ -65,6 +47,29 @@ describe('BankService', () => {
     expect(req.request.body).toEqual({ amount: 200, targetAccountId: '7' });
     expect(req.request.headers.get('Idempotency-Key')).toBe('idem-key-4');
     req.flush([]);
+  });
+
+  it('transfer → POST /api/accounts/:id/transfer with recipient details and Idempotency-Key header', () => {
+    service.transfer('4', { amount: 50, targetUsername: 'bob', targetAccountNumber: 'ACC-002' }, 'idem-key-5').subscribe();
+    const req = httpMock.expectOne('/api/accounts/4/transfer');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ amount: 50, targetUsername: 'bob', targetAccountNumber: 'ACC-002' });
+    expect(req.request.headers.get('Idempotency-Key')).toBe('idem-key-5');
+    req.flush([]);
+  });
+
+  it('checkRecipient → GET /api/accounts/recipient with username and accountNumber query params', () => {
+    service.checkRecipient('bob', 'ACC-002').subscribe();
+    const req = httpMock.expectOne('/api/accounts/recipient?username=bob&accountNumber=ACC-002');
+    expect(req.request.method).toBe('GET');
+    req.flush({ valid: true });
+  });
+
+  it('checkRecipient → URL-encodes username and accountNumber', () => {
+    service.checkRecipient('bob smith', 'ACC 002').subscribe();
+    httpMock
+      .expectOne('/api/accounts/recipient?username=bob%20smith&accountNumber=ACC%20002')
+      .flush({ valid: false });
   });
 
   // ── Transactions ─────────────────────────────────────────────────────────────

@@ -47,6 +47,7 @@ class AccountServiceTest {
     private User bob;
     private Account eurAccount;
     private Account usdAccount;
+    private Account bobAccount;
 
     @BeforeEach
     void setUp() {
@@ -75,6 +76,13 @@ class AccountServiceTest {
         usdAccount.setCurrency(Currency.USD);
         usdAccount.setBalance(new BigDecimal("500.00"));
         usdAccount.setUser(alice);
+
+        bobAccount = new Account();
+        bobAccount.setId(30L);
+        bobAccount.setAccountNumber("ACC-CCCCCCCC");
+        bobAccount.setCurrency(Currency.EUR);
+        bobAccount.setBalance(new BigDecimal("200.00"));
+        bobAccount.setUser(bob);
 
         setCurrentUser("alice");
 
@@ -147,91 +155,47 @@ class AccountServiceTest {
     }
 
 
-    // ── credit ────────────────────────────────────────────────────────────
+    // ── transferInternal ─────────────────────────────────────────────────
 
     @Test
-    void credit_validAmount_increasesBalanceAndSavesTransaction() {
-        Operation savedOp = buildOp(eurAccount, OperationType.CREDIT, new BigDecimal("200.00"),
-                new BigDecimal("1200.00"));
+    void transferInternal_validRequest_movesFundsAndCreatesPairedTransactions() {
+        BigDecimal rate = BigDecimal.ONE;
+        BigDecimal converted = new BigDecimal("100.00");
 
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(accountRepository.save(eurAccount)).thenReturn(eurAccount);
-        when(operationRepository.save(any(Operation.class))).thenReturn(savedOp);
+        when(accountRepository.findById(30L)).thenReturn(Optional.of(bobAccount));
+        when(exchangeRateService.getRate(Currency.EUR, Currency.EUR)).thenReturn(rate);
+        when(exchangeRateService.convert(new BigDecimal("100.00"), Currency.EUR, Currency.EUR)).thenReturn(converted);
+        when(accountRepository.save(any())).thenReturn(eurAccount, bobAccount);
 
-        OperationResponse result = accountService.credit(10L, new MoneyRequest(new BigDecimal("200.00"), "Salary"));
+        Operation outOp = buildOp(eurAccount, OperationType.TRANSFER_OUT, new BigDecimal("100.00"), new BigDecimal("900.00"));
+        Operation inOp = buildOp(bobAccount, OperationType.TRANSFER_IN, converted, new BigDecimal("300.00"));
+        when(operationRepository.save(any(Operation.class))).thenReturn(outOp, inOp);
 
-        assertThat(eurAccount.getBalance()).isEqualByComparingTo(new BigDecimal("1200.00"));
-        assertThat(result.type()).isEqualTo(OperationType.CREDIT);
-        assertThat(result.amount()).isEqualByComparingTo(new BigDecimal("200.00"));
+        List<OperationResponse> result = accountService.transferInternal(
+                10L, 30L, new BigDecimal("100.00"), "Seed out", "Seed in");
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).type()).isEqualTo(OperationType.TRANSFER_OUT);
+        assertThat(result.get(1).type()).isEqualTo(OperationType.TRANSFER_IN);
+        assertThat(eurAccount.getBalance()).isEqualByComparingTo(new BigDecimal("900.00"));
+        assertThat(bobAccount.getBalance()).isEqualByComparingTo(new BigDecimal("300.00"));
     }
 
     @Test
-    void credit_nullDescription_usesDefaultDescription() {
-        Operation savedOp = buildOp(eurAccount, OperationType.CREDIT, new BigDecimal("100.00"),
-                new BigDecimal("1100.00"));
-        savedOp.setDescription("Credit");
-
+    void transferInternal_doesNotCallDebitEligibilityCheck() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(accountRepository.save(any())).thenReturn(eurAccount);
-        when(operationRepository.save(any(Operation.class))).thenReturn(savedOp);
+        when(accountRepository.findById(30L)).thenReturn(Optional.of(bobAccount));
+        when(exchangeRateService.getRate(Currency.EUR, Currency.EUR)).thenReturn(BigDecimal.ONE);
+        when(exchangeRateService.convert(any(), eq(Currency.EUR), eq(Currency.EUR))).thenReturn(new BigDecimal("50.00"));
+        when(accountRepository.save(any())).thenReturn(eurAccount, bobAccount);
+        when(operationRepository.save(any(Operation.class)))
+                .thenReturn(buildOp(eurAccount, OperationType.TRANSFER_OUT, new BigDecimal("50.00"), new BigDecimal("950.00")))
+                .thenReturn(buildOp(bobAccount, OperationType.TRANSFER_IN, new BigDecimal("50.00"), new BigDecimal("250.00")));
 
-        OperationResponse result = accountService.credit(10L, new MoneyRequest(new BigDecimal("100.00"), null));
+        accountService.transferInternal(10L, 30L, new BigDecimal("50.00"), "Seed out", "Seed in");
 
-        assertThat(result.description()).isEqualTo("Credit");
-    }
-
-
-    // ── debit ─────────────────────────────────────────────────────────────
-
-    @Test
-    void debit_sufficientFunds_decreasesBalanceAndSavesTransaction() {
-        Operation savedOp = buildOp(eurAccount, OperationType.DEBIT, new BigDecimal("300.00"),
-                new BigDecimal("700.00"));
-
-        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(accountRepository.save(eurAccount)).thenReturn(eurAccount);
-        when(operationRepository.save(any(Operation.class))).thenReturn(savedOp);
-
-        OperationResponse result = accountService.debit(10L, new MoneyRequest(new BigDecimal("300.00"), "Rent"));
-
-        assertThat(eurAccount.getBalance()).isEqualByComparingTo(new BigDecimal("700.00"));
-        assertThat(result.type()).isEqualTo(OperationType.DEBIT);
-    }
-
-    @Test
-    void debit_insufficientFunds_throwsInsufficientFundsException() {
-        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-
-        assertThatThrownBy(() -> accountService.debit(10L, new MoneyRequest(new BigDecimal("9999.00"), null)))
-                .isInstanceOf(InsufficientFundsException.class)
-                .hasMessageContaining("Insufficient funds");
-
-        verify(operationRepository, never()).save(any());
-    }
-
-    @Test
-    void debit_exactBalance_succeeds() {
-        Operation savedOp = buildOp(eurAccount, OperationType.DEBIT, new BigDecimal("1000.00"),
-                BigDecimal.ZERO);
-
-        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(accountRepository.save(any())).thenReturn(eurAccount);
-        when(operationRepository.save(any(Operation.class))).thenReturn(savedOp);
-
-        assertThatCode(() -> accountService.debit(10L, new MoneyRequest(new BigDecimal("1000.00"), null)))
-                .doesNotThrowAnyException();
-    }
-
-    @Test
-    void debit_eligibilityDenied_throwsDebitNotAllowedException() {
-        when(debitEligibilityClient.isDebitAllowed(1L)).thenReturn(false);
-        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-
-        assertThatThrownBy(() -> accountService.debit(10L, new MoneyRequest(new BigDecimal("100.00"), null)))
-                .isInstanceOf(DebitNotAllowedException.class)
-                .hasMessageContaining("Debit not allowed");
-
-        verify(operationRepository, never()).save(any());
+        verify(debitEligibilityClient, never()).isDebitAllowed(any());
     }
 
     // ── exchange ──────────────────────────────────────────────────────────
@@ -285,6 +249,179 @@ class AccountServiceTest {
                 .isInstanceOf(InsufficientFundsException.class);
     }
 
+    @Test
+    void exchange_targetOwnedByAnotherUser_throwsResourceNotFoundException() {
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(accountRepository.findByPublicId(bobAccount.getPublicId())).thenReturn(Optional.of(bobAccount));
+
+        assertThatThrownBy(() -> accountService.exchange(10L,
+                new ExchangeRequest(new BigDecimal("100.00"), bobAccount.getPublicId())))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(accountRepository, never()).save(any());
+        verify(operationRepository, never()).save(any());
+    }
+
+    // ── transfer ──────────────────────────────────────────────────────────
+
+    @Test
+    void transfer_validRequest_convertsAndCreatesTransferTransactions() {
+        BigDecimal rate = BigDecimal.ONE;
+        BigDecimal converted = new BigDecimal("100.00");
+
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
+        when(exchangeRateService.getRate(Currency.EUR, Currency.EUR)).thenReturn(rate);
+        when(exchangeRateService.convert(new BigDecimal("100.00"), Currency.EUR, Currency.EUR)).thenReturn(converted);
+        when(accountRepository.save(any())).thenReturn(eurAccount, bobAccount);
+
+        Operation outOp = buildOp(eurAccount, OperationType.TRANSFER_OUT, new BigDecimal("100.00"),
+                new BigDecimal("900.00"));
+        Operation inOp = buildOp(bobAccount, OperationType.TRANSFER_IN, converted,
+                new BigDecimal("300.00"));
+        when(operationRepository.save(any(Operation.class))).thenReturn(outOp, inOp);
+
+        List<OperationResponse> result = accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "bob", "ACC-CCCCCCCC", "Dinner"));
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).type()).isEqualTo(OperationType.TRANSFER_OUT);
+        assertThat(result.get(1).type()).isEqualTo(OperationType.TRANSFER_IN);
+        assertThat(eurAccount.getBalance()).isEqualByComparingTo(new BigDecimal("900.00"));
+        assertThat(bobAccount.getBalance()).isEqualByComparingTo(new BigDecimal("300.00"));
+    }
+
+    @Test
+    void transfer_unknownUsername_throwsResourceNotFoundException() {
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "nobody", "ACC-CCCCCCCC", null)))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Recipient not found");
+
+        verify(accountRepository, never()).save(any());
+    }
+
+    @Test
+    void transfer_unknownAccountNumber_throwsResourceNotFoundException() {
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("BOGUS")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "bob", "BOGUS", null)))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Recipient not found");
+    }
+
+    @Test
+    void transfer_usernameAndAccountNumberDontMatchTheSameAccount_throwsResourceNotFoundException() {
+        // "bob" is real and "ACC-AAAAAAAA" is real, but ACC-AAAAAAAA belongs to alice, not bob.
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("ACC-AAAAAAAA")).thenReturn(Optional.of(eurAccount));
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "bob", "ACC-AAAAAAAA", null)))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Recipient not found");
+
+        verify(accountRepository, never()).save(any());
+    }
+
+    @Test
+    void transfer_sameAccount_throwsIllegalArgumentException() {
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
+        when(accountRepository.findByAccountNumber("ACC-AAAAAAAA")).thenReturn(Optional.of(eurAccount));
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "alice", "ACC-AAAAAAAA", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("same account");
+    }
+
+    @Test
+    void transfer_insufficientFunds_throwsInsufficientFundsException() {
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("5000.00"), "bob", "ACC-CCCCCCCC", null)))
+                .isInstanceOf(InsufficientFundsException.class);
+
+        verify(operationRepository, never()).save(any());
+    }
+
+    @Test
+    void transfer_eligibilityDenied_throwsDebitNotAllowedException() {
+        when(debitEligibilityClient.isDebitAllowed(1L)).thenReturn(false);
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "bob", "ACC-CCCCCCCC", null)))
+                .isInstanceOf(DebitNotAllowedException.class)
+                .hasMessageContaining("Debit not allowed");
+
+        verify(accountRepository, never()).save(any());
+        verify(operationRepository, never()).save(any());
+    }
+
+    // ── checkRecipient ───────────────────────────────────────────────────────
+
+    @Test
+    void checkRecipient_matchingUsernameAndAccountNumber_returnsValid() {
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
+
+        RecipientCheckResponse result = accountService.checkRecipient("bob", "ACC-CCCCCCCC");
+
+        assertThat(result.valid()).isTrue();
+    }
+
+    @Test
+    void checkRecipient_unknownUsername_returnsInvalid() {
+        when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
+
+        RecipientCheckResponse result = accountService.checkRecipient("nobody", "ACC-CCCCCCCC");
+
+        assertThat(result.valid()).isFalse();
+    }
+
+    @Test
+    void checkRecipient_unknownAccountNumber_returnsInvalid() {
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("BOGUS")).thenReturn(Optional.empty());
+
+        RecipientCheckResponse result = accountService.checkRecipient("bob", "BOGUS");
+
+        assertThat(result.valid()).isFalse();
+    }
+
+    @Test
+    void checkRecipient_usernameAndAccountNumberDontMatchTheSameAccount_returnsInvalid() {
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("ACC-AAAAAAAA")).thenReturn(Optional.of(eurAccount));
+
+        RecipientCheckResponse result = accountService.checkRecipient("bob", "ACC-AAAAAAAA");
+
+        assertThat(result.valid()).isFalse();
+    }
+
+    @Test
+    void checkRecipient_doesNotMoveAnyMoney() {
+        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
+
+        accountService.checkRecipient("bob", "ACC-CCCCCCCC");
+
+        verify(accountRepository, never()).save(any());
+        verify(operationRepository, never()).save(any());
+    }
 
     // ── getTransactionHistory ─────────────────────────────────────────────
 
@@ -292,7 +429,7 @@ class AccountServiceTest {
 
     @Test
     void getTransaction_existingId_returnsTransaction() {
-        Operation op = buildOp(eurAccount, OperationType.CREDIT, new BigDecimal("100.00"),
+        Operation op = buildOp(eurAccount, OperationType.TRANSFER_IN, new BigDecimal("100.00"),
                 new BigDecimal("1100.00"));
         op.setId(5L);
 
@@ -301,7 +438,7 @@ class AccountServiceTest {
         OperationResponse result = accountService.getTransaction(5L);
 
         assertThat(result.id()).isEqualTo(op.getPublicId());
-        assertThat(result.type()).isEqualTo(OperationType.CREDIT);
+        assertThat(result.type()).isEqualTo(OperationType.TRANSFER_IN);
     }
 
     @Test
