@@ -41,28 +41,6 @@ public class AccountController {
         return ResponseEntity.ok(accountService.getAccountSummary(accountService.resolveAccountId(accountId)));
     }
 
-    @PostMapping("/{accountId}/credit")
-    public ResponseEntity<OperationResponse> credit(
-            @PathVariable UUID accountId,
-            @Valid @RequestBody MoneyRequest req,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        Long id = accountService.resolveAccountId(accountId);
-        OperationResponse response = idempotencyStore.execute(idempotencyKey, "credit:" + accountId,
-                () -> accountService.credit(id, req));
-        return ResponseEntity.ok(response);
-    }
-
-    @PostMapping("/{accountId}/debit")
-    public ResponseEntity<OperationResponse> debit(
-            @PathVariable UUID accountId,
-            @Valid @RequestBody MoneyRequest req,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        Long id = accountService.resolveAccountId(accountId);
-        OperationResponse response = idempotencyStore.execute(idempotencyKey, "debit:" + accountId,
-                () -> accountService.debit(id, req));
-        return ResponseEntity.ok(response);
-    }
-
     @PostMapping("/{accountId}/exchange")
     public ResponseEntity<List<OperationResponse>> exchange(
             @PathVariable UUID accountId,
@@ -72,6 +50,24 @@ public class AccountController {
         List<OperationResponse> response = idempotencyStore.execute(idempotencyKey, "exchange:" + accountId,
                 () -> accountService.exchange(id, req));
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{accountId}/transfer")
+    public ResponseEntity<List<OperationResponse>> transfer(
+            @PathVariable UUID accountId,
+            @Valid @RequestBody TransferRequest req,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        Long id = accountService.resolveAccountId(accountId);
+        List<OperationResponse> response = idempotencyStore.execute(idempotencyKey, "transfer:" + accountId,
+                () -> accountService.transfer(id, req));
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/recipient")
+    public ResponseEntity<RecipientCheckResponse> checkRecipient(
+            @RequestParam String username,
+            @RequestParam String accountNumber) {
+        return ResponseEntity.ok(accountService.checkRecipient(username, accountNumber));
     }
 
     @GetMapping("/{accountId}/balance-history")

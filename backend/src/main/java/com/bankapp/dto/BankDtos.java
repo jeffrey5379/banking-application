@@ -57,6 +57,17 @@ public class BankDtos {
             @NotNull UUID targetAccountId
     ) {}
 
+    public record TransferRequest(
+            @NotNull @DecimalMin(value = "0.01") BigDecimal amount,
+            @NotBlank String targetUsername,
+            @NotBlank String targetAccountNumber,
+            String description
+    ) {}
+
+    public record RecipientCheckResponse(
+            boolean valid
+    ) {}
+
     // ── Response DTOs ─────────────────────────────────────────────────────
 
     public record UserResponse(

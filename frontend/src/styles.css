@@ -190,6 +190,17 @@ h4 {
   background: var(--accent-light);
   border-color: var(--accent);
 }
+.btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.btn-primary:disabled:hover {
+  background: var(--accent);
+}
+.btn-ghost:disabled:hover {
+  background: transparent;
+  border-color: var(--border);
+}
 .btn-sm {
   padding: 5px 10px;
   font-size: 12px;

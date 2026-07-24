@@ -2,7 +2,6 @@ package com.bankapp.controller;
 
 import com.bankapp.dto.BankDtos.*;
 import com.bankapp.exception.GlobalExceptionHandler;
-import com.bankapp.exception.InsufficientFundsException;
 import com.bankapp.exception.ResourceNotFoundException;
 import com.bankapp.model.Currency;
 import com.bankapp.model.OperationType;
@@ -19,7 +18,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -117,86 +115,6 @@ class AccountControllerTest {
                 .andExpect(status().isForbidden());
     }
 
-    // ── POST /api/accounts/{accountId}/credit ─────────────────────────────
-
-    @Test
-    void credit_validRequest_returnsTransaction() throws Exception {
-        OperationResponse tx = txResponse(UUID.randomUUID(), ACCOUNT_10, "ACC-AAAAAAAA", OperationType.CREDIT,
-                new BigDecimal("200.00"), Currency.EUR, new BigDecimal("1200.00"), "Salary");
-        when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
-        when(accountService.credit(eq(10L), any())).thenReturn(tx);
-
-        mockMvc.perform(post("/api/accounts/{accountId}/credit", ACCOUNT_10)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("amount", 200.00, "description", "Salary"))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.type").value("CREDIT"))
-                .andExpect(jsonPath("$.amount").value(200.00))
-                .andExpect(jsonPath("$.description").value("Salary"));
-    }
-
-    @Test
-    void credit_repeatedIdempotencyKey_invokesServiceOnceAndReplaysResponse() throws Exception {
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("alice", null));
-
-        OperationResponse tx = txResponse(UUID.randomUUID(), ACCOUNT_10, "ACC-AAAAAAAA", OperationType.CREDIT,
-                new BigDecimal("200.00"), Currency.EUR, new BigDecimal("1200.00"), "Salary");
-        when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
-        when(accountService.credit(eq(10L), any())).thenReturn(tx);
-
-        String body = objectMapper.writeValueAsString(Map.of("amount", 200.00, "description", "Salary"));
-        String idempotencyKey = UUID.randomUUID().toString();
-
-        for (int i = 0; i < 2; i++) {
-            mockMvc.perform(post("/api/accounts/{accountId}/credit", ACCOUNT_10)
-                            .header("Idempotency-Key", idempotencyKey)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(body))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.id").value(tx.id().toString()));
-        }
-
-        verify(accountService, times(1)).credit(eq(10L), any());
-    }
-
-    @Test
-    void credit_zeroAmount_returns400() throws Exception {
-        mockMvc.perform(post("/api/accounts/{accountId}/credit", ACCOUNT_10)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("amount", 0.00))))
-                .andExpect(status().isBadRequest());
-    }
-
-    // ── POST /api/accounts/{accountId}/debit ──────────────────────────────
-
-    @Test
-    void debit_sufficientFunds_returnsTransaction() throws Exception {
-        OperationResponse tx = txResponse(UUID.randomUUID(), ACCOUNT_10, "ACC-AAAAAAAA", OperationType.DEBIT,
-                new BigDecimal("300.00"), Currency.EUR, new BigDecimal("700.00"), "Rent");
-        when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
-        when(accountService.debit(eq(10L), any())).thenReturn(tx);
-
-        mockMvc.perform(post("/api/accounts/{accountId}/debit", ACCOUNT_10)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("amount", 300.00, "description", "Rent"))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.type").value("DEBIT"))
-                .andExpect(jsonPath("$.balanceAfter").value(700.00));
-    }
-
-    @Test
-    void debit_insufficientFunds_returns400() throws Exception {
-        when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
-        when(accountService.debit(eq(10L), any()))
-                .thenThrow(new InsufficientFundsException("Insufficient funds. Balance: 1000.00 EUR"));
-
-        mockMvc.perform(post("/api/accounts/{accountId}/debit", ACCOUNT_10)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("amount", 9999.00))))
-                .andExpect(status().isBadRequest());
-    }
-
     // ── POST /api/accounts/{accountId}/exchange ───────────────────────────
 
     @Test
@@ -232,11 +150,87 @@ class AccountControllerTest {
                 .andExpect(jsonPath("$.message", org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Some DB error"))));
     }
 
+    // ── POST /api/accounts/{accountId}/transfer ───────────────────────────
+
+    @Test
+    void transfer_validRequest_returnsTwoTransactions() throws Exception {
+        OperationResponse outTx = txResponse(UUID.randomUUID(), ACCOUNT_10, "ACC-AAAAAAAA", OperationType.TRANSFER_OUT,
+                new BigDecimal("50.00"), Currency.EUR, new BigDecimal("950.00"), "Transfer to bob (ACC-BBBBBBBB)");
+        OperationResponse inTx = txResponse(UUID.randomUUID(), ACCOUNT_20, "ACC-BBBBBBBB", OperationType.TRANSFER_IN,
+                new BigDecimal("50.00"), Currency.EUR, new BigDecimal("550.00"), "Transfer from alice (ACC-AAAAAAAA)");
+
+        when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
+        when(accountService.transfer(eq(10L), any())).thenReturn(List.of(outTx, inTx));
+
+        mockMvc.perform(post("/api/accounts/{accountId}/transfer", ACCOUNT_10)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("amount", 50.00, "targetUsername", "bob", "targetAccountNumber", "ACC-BBBBBBBB"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].type").value("TRANSFER_OUT"))
+                .andExpect(jsonPath("$[1].type").value("TRANSFER_IN"));
+    }
+
+    @Test
+    void transfer_recipientNotFound_returns404() throws Exception {
+        when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
+        when(accountService.transfer(eq(10L), any()))
+                .thenThrow(new ResourceNotFoundException("Recipient not found"));
+
+        mockMvc.perform(post("/api/accounts/{accountId}/transfer", ACCOUNT_10)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("amount", 50.00, "targetUsername", "nobody", "targetAccountNumber", "BOGUS"))))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void transfer_blankTargetUsername_returns400() throws Exception {
+        mockMvc.perform(post("/api/accounts/{accountId}/transfer", ACCOUNT_10)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("amount", 50.00, "targetUsername", "", "targetAccountNumber", "ACC-BBBBBBBB"))))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ── GET /api/accounts/recipient ─────────────────────────────────────────
+
+    @Test
+    void checkRecipient_validRecipient_returns200() throws Exception {
+        when(accountService.checkRecipient("bob", "ACC-BBBBBBBB"))
+                .thenReturn(new RecipientCheckResponse(true));
+
+        mockMvc.perform(get("/api/accounts/recipient")
+                        .param("username", "bob")
+                        .param("accountNumber", "ACC-BBBBBBBB"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true));
+    }
+
+    @Test
+    void checkRecipient_unknownRecipient_returns200WithValidFalse() throws Exception {
+        when(accountService.checkRecipient("nobody", "BOGUS"))
+                .thenReturn(new RecipientCheckResponse(false));
+
+        mockMvc.perform(get("/api/accounts/recipient")
+                        .param("username", "nobody")
+                        .param("accountNumber", "BOGUS"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(false));
+    }
+
+    @Test
+    void checkRecipient_missingQueryParam_returns400() throws Exception {
+        mockMvc.perform(get("/api/accounts/recipient").param("username", "bob"))
+                .andExpect(status().isBadRequest());
+    }
+
     // ── GET /api/accounts/{accountId}/transactions ────────────────────────
 
     @Test
     void getTransactionHistoryPaged_returnsPage() throws Exception {
-        OperationResponse tx = txResponse(UUID.randomUUID(), ACCOUNT_10, "ACC-AAAAAAAA", OperationType.CREDIT,
+        OperationResponse tx = txResponse(UUID.randomUUID(), ACCOUNT_10, "ACC-AAAAAAAA", OperationType.TRANSFER_IN,
                 new BigDecimal("100.00"), Currency.EUR, new BigDecimal("1100.00"), "Credit");
         OperationPage page = new OperationPage(List.of(tx), 0, 10, 1L, true);
         when(accountService.resolveAccountId(ACCOUNT_10)).thenReturn(10L);
@@ -245,7 +239,7 @@ class AccountControllerTest {
         mockMvc.perform(get("/api/accounts/{accountId}/transactions", ACCOUNT_10))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(1))
-                .andExpect(jsonPath("$.content[0].type").value("CREDIT"))
+                .andExpect(jsonPath("$.content[0].type").value("TRANSFER_IN"))
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
 
@@ -253,7 +247,7 @@ class AccountControllerTest {
 
     @Test
     void getTransaction_existingId_returnsTransaction() throws Exception {
-        OperationResponse tx = txResponse(TX_5, ACCOUNT_10, "ACC-AAAAAAAA", OperationType.DEBIT,
+        OperationResponse tx = txResponse(TX_5, ACCOUNT_10, "ACC-AAAAAAAA", OperationType.TRANSFER_OUT,
                 new BigDecimal("50.00"), Currency.EUR, new BigDecimal("950.00"), "Coffee");
         when(accountService.resolveOperationId(TX_5)).thenReturn(5L);
         when(accountService.getTransaction(5L)).thenReturn(tx);
@@ -261,7 +255,7 @@ class AccountControllerTest {
         mockMvc.perform(get("/api/accounts/transactions/{transactionId}", TX_5))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(TX_5.toString()))
-                .andExpect(jsonPath("$.type").value("DEBIT"));
+                .andExpect(jsonPath("$.type").value("TRANSFER_OUT"));
     }
 
     @Test

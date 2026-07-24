@@ -7,6 +7,7 @@ import {
   ChangeDetectionStrategy,
   inject,
   effect,
+  signal,
   DestroyRef,
 } from "@angular/core";
 import { CommonModule } from "@angular/common";
@@ -17,7 +18,9 @@ import { ChartData, ChartOptions } from "chart.js";
 import { Store } from "@ngrx/store";
 import { Actions, ofType } from "@ngrx/effects";
 import { toSignal, takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { Subject, catchError, debounceTime, of, switchMap } from "rxjs";
 import { BalancePoint } from "../../models/bank.models";
+import { BankService } from "../../services/bank.service";
 import { AccountDetailActions } from "../../store/account-detail/account-detail.actions";
 import {
   selectAccount,
@@ -34,7 +37,7 @@ import {
   selectExchangeRates,
 } from "../../store/account-detail/account-detail.selectors";
 
-type ModalType = "credit" | "debit" | "exchange" | null;
+type ModalType = "exchange" | "transfer" | null;
 
 @Component({
   selector: "app-account-overview",
@@ -84,28 +87,6 @@ type ModalType = "credit" | "debit" | "exchange" | null;
               </div>
             </div>
             <div class="hero-actions">
-              <button class="btn btn-primary" (click)="openModal('credit')">
-                <svg width="13" height="13" viewBox="0 0 13 13">
-                  <path
-                    d="M6.5 1v11M1 6.5h11"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                  />
-                </svg>
-                Add Money
-              </button>
-              <button class="btn btn-ghost" (click)="openModal('debit')">
-                <svg width="13" height="13" viewBox="0 0 13 13">
-                  <path
-                    d="M1 6.5h11"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                  />
-                </svg>
-                Debit
-              </button>
               <button class="btn btn-ghost" (click)="openModal('exchange')">
                 <svg width="14" height="14" viewBox="0 0 14 14">
                   <path
@@ -117,6 +98,18 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                   />
                 </svg>
                 Exchange
+              </button>
+              <button class="btn btn-ghost" (click)="openModal('transfer')">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path
+                    d="M1 7h11m0 0L8 3m4 4-4 4"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Send
               </button>
             </div>
           </div>
@@ -172,7 +165,7 @@ type ModalType = "credit" | "debit" | "exchange" | null;
             @if (transactions().length === 0 && !loadingMore()) {
               <div class="empty-state">
                 <p>No transactions yet</p>
-                <p class="text-sm text-muted">Add money to get started.</p>
+                <p class="text-sm text-muted">Send or exchange money to get started.</p>
               </div>
             }
             @if (transactions().length > 0) {
@@ -237,102 +230,6 @@ type ModalType = "credit" | "debit" | "exchange" | null;
       @if (activeModal) {
         <div class="modal-overlay">
           <div class="modal">
-            <!-- Credit -->
-            @if (activeModal === "credit") {
-              <div class="modal-header">
-                <h3>Add Money</h3>
-                <button class="modal-close" (click)="closeModal()">×</button>
-              </div>
-              <div class="modal-body">
-                <div class="form-group">
-                  <label class="form-label"
-                    >Amount ({{ account()?.currency }})</label
-                  >
-                  <input
-                    class="form-input"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    [(ngModel)]="modalAmount"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Description (optional)</label>
-                  <input
-                    class="form-input"
-                    type="text"
-                    [(ngModel)]="modalDesc"
-                    placeholder="e.g. Salary"
-                  />
-                </div>
-                @if (error()) {
-                  <div class="error-banner">{{ error() }}</div>
-                }
-              </div>
-              <div class="modal-footer">
-                <button class="btn btn-ghost" (click)="closeModal()">
-                  Cancel
-                </button>
-                <button
-                  class="btn btn-primary"
-                  (click)="submitCredit()"
-                  [disabled]="operationLoading()"
-                >
-                  {{ operationLoading() ? "Processing..." : error() ? "Retry" : "Add Money" }}
-                </button>
-              </div>
-            }
-            <!-- Debit -->
-            @if (activeModal === "debit") {
-              <div class="modal-header">
-                <h3>Debit Funds</h3>
-                <button class="modal-close" (click)="closeModal()">×</button>
-              </div>
-              <div class="modal-body">
-                <div class="form-group">
-                  <label class="form-label"
-                    >Amount ({{ account()?.currency }})</label
-                  >
-                  <input
-                    class="form-input"
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    [(ngModel)]="modalAmount"
-                    placeholder="0.00"
-                  />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Description (optional)</label>
-                  <input
-                    class="form-input"
-                    type="text"
-                    [(ngModel)]="modalDesc"
-                    placeholder="e.g. Rent payment"
-                  />
-                </div>
-                <p class="text-muted text-sm">
-                  Available: {{ formatAmount(account()?.balance || 0) }}
-                  {{ account()?.currency }}
-                </p>
-                @if (error()) {
-                  <div class="error-banner">{{ error() }}</div>
-                }
-              </div>
-              <div class="modal-footer">
-                <button class="btn btn-ghost" (click)="closeModal()">
-                  Cancel
-                </button>
-                <button
-                  class="btn btn-primary"
-                  (click)="submitDebit()"
-                  [disabled]="operationLoading()"
-                >
-                  {{ operationLoading() ? "Processing..." : error() ? "Retry" : "Debit" }}
-                </button>
-              </div>
-            }
             <!-- Exchange -->
             @if (activeModal === "exchange") {
               <div class="modal-header">
@@ -394,7 +291,123 @@ type ModalType = "credit" | "debit" | "exchange" | null;
                   (click)="submitExchange()"
                   [disabled]="operationLoading() || !targetAccountId"
                 >
-                  {{ operationLoading() ? "Processing..." : error() ? "Retry" : "Exchange" }}
+                  {{
+                    operationLoading()
+                      ? "Processing..."
+                      : error()
+                        ? "Retry"
+                        : "Exchange"
+                  }}
+                </button>
+              </div>
+            }
+            <!-- Transfer to another user -->
+            @if (activeModal === "transfer") {
+              <div class="modal-header">
+                <h3>Send to Another User</h3>
+                <button class="modal-close" (click)="closeModal()">×</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <label class="form-label"
+                    >Amount ({{ account()?.currency }})</label
+                  >
+                  <input
+                    class="form-input"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    [(ngModel)]="modalAmount"
+                    placeholder="0.00"
+                  />
+                  <div class="field-hint-slot">
+                    @if (modalAmount && !hasSufficientFunds()) {
+                      <span class="field-hint field-hint-error"
+                        >Insufficient funds — available
+                        {{ formatAmount(account()?.balance || 0) }}
+                        {{ account()?.currency }}</span
+                      >
+                    }
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Recipient Username</label>
+                  <input
+                    class="form-input"
+                    type="text"
+                    [ngModel]="transferUsername"
+                    (ngModelChange)="
+                      transferUsername = $event; onRecipientFieldChange()
+                    "
+                    placeholder="e.g. bob"
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Recipient Account Number</label>
+                  <input
+                    class="form-input"
+                    type="text"
+                    [ngModel]="transferAccountNumber"
+                    (ngModelChange)="
+                      transferAccountNumber = $event; onRecipientFieldChange()
+                    "
+                    placeholder="e.g. 1234567890"
+                    autocomplete="off"
+                  />
+                  <div class="field-hint-slot">
+                    @if (recipientStatus() === "checking") {
+                      <span class="field-hint">Checking recipient…</span>
+                    }
+                    @if (recipientStatus() === "valid") {
+                      <span class="field-hint field-hint-success"
+                        >Recipient found</span
+                      >
+                    }
+                    @if (recipientStatus() === "invalid") {
+                      <span class="field-hint field-hint-error"
+                        >Recipient not found</span
+                      >
+                    }
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Description (optional)</label>
+                  <input
+                    class="form-input"
+                    type="text"
+                    [(ngModel)]="modalDesc"
+                    placeholder="e.g. Dinner split"
+                  />
+                </div>
+                <p class="text-muted text-sm">
+                  If the recipient's account is in a different currency, the
+                  amount will be converted automatically.
+                </p>
+                @if (error()) {
+                  <div class="error-banner">{{ error() }}</div>
+                }
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-ghost" (click)="closeModal()">
+                  Cancel
+                </button>
+                <button
+                  class="btn btn-primary"
+                  (click)="submitTransfer()"
+                  [disabled]="
+                    operationLoading() ||
+                    !hasSufficientFunds() ||
+                    recipientStatus() !== 'valid'
+                  "
+                >
+                  {{
+                    operationLoading()
+                      ? "Processing..."
+                      : error()
+                        ? "Retry"
+                        : "Send"
+                  }}
                 </button>
               </div>
             }
@@ -501,6 +514,23 @@ type ModalType = "credit" | "debit" | "exchange" | null;
         border-radius: var(--radius-sm);
       }
 
+      .field-hint-slot {
+        display: block;
+        min-height: 18px;
+        margin-top: 4px;
+      }
+      .field-hint {
+        display: block;
+        font-size: 12px;
+        color: var(--ink-muted);
+      }
+      .field-hint-success {
+        color: var(--success);
+      }
+      .field-hint-error {
+        color: var(--danger);
+      }
+
       .chart-card {
         padding: 20px 20px 16px;
         margin-bottom: 0;
@@ -570,6 +600,7 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
   private destroyRef = inject(DestroyRef);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private bankService = inject(BankService);
 
   account = toSignal(this.store.select(selectAccount), { initialValue: null });
   transactions = toSignal(this.store.select(selectTransactions), {
@@ -607,6 +638,17 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
   modalAmount: number | null = null;
   modalDesc = "";
   targetAccountId: string | null = null;
+  transferUsername = "";
+  transferAccountNumber = "";
+
+  // Debounced "does this recipient actually exist" check, driven by the username/account
+  // number inputs. Signals (not plain fields) so the async result reliably re-renders under
+  // OnPush even though nothing else in the template happens to read a signal at the same time.
+  private recipientCheck$ = new Subject<{
+    username: string;
+    accountNumber: string;
+  }>();
+  recipientStatus = signal<"idle" | "checking" | "valid" | "invalid">("idle");
 
   // Fixed for the lifetime of one modal session so a retry after a failure (same modal,
   // same inputs) reuses the same key and is safely deduplicated by the backend.
@@ -669,6 +711,27 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
         this.buildChart(history);
       }
     });
+
+    this.recipientCheck$
+      .pipe(
+        debounceTime(400),
+        switchMap(({ username, accountNumber }) => {
+          if (!username || !accountNumber) {
+            return of(null);
+          }
+          return this.bankService
+            .checkRecipient(username, accountNumber)
+            .pipe(catchError(() => of({ valid: false, currency: null })));
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((result) => {
+        if (result === null) {
+          this.recipientStatus.set("idle");
+          return;
+        }
+        this.recipientStatus.set(result.valid ? "valid" : "invalid");
+      });
   }
 
   @ViewChild("sentinel") set sentinelEl(ref: ElementRef | undefined) {
@@ -695,9 +758,8 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
     this.actions$
       .pipe(
         ofType(
-          AccountDetailActions.submitCreditSuccess,
-          AccountDetailActions.submitDebitSuccess,
           AccountDetailActions.submitExchangeSuccess,
+          AccountDetailActions.submitTransferSuccess,
         ),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -714,35 +776,14 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
     this.modalAmount = null;
     this.modalDesc = "";
     this.targetAccountId = null;
+    this.transferUsername = "";
+    this.transferAccountNumber = "";
+    this.recipientStatus.set("idle");
     this.operationIdempotencyKey = crypto.randomUUID();
   }
 
   closeModal() {
     this.activeModal = null;
-  }
-
-  submitCredit() {
-    const account = this.account();
-    if (!account || !this.modalAmount) return;
-    this.store.dispatch(
-      AccountDetailActions.submitCredit({
-        accountId: account.id,
-        req: { amount: this.modalAmount, description: this.modalDesc },
-        idempotencyKey: this.operationIdempotencyKey,
-      }),
-    );
-  }
-
-  submitDebit() {
-    const account = this.account();
-    if (!account || !this.modalAmount) return;
-    this.store.dispatch(
-      AccountDetailActions.submitDebit({
-        accountId: account.id,
-        req: { amount: this.modalAmount, description: this.modalDesc },
-        idempotencyKey: this.operationIdempotencyKey,
-      }),
-    );
   }
 
   submitExchange() {
@@ -757,6 +798,47 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
         },
         idempotencyKey: this.operationIdempotencyKey,
       }),
+    );
+  }
+
+  submitTransfer() {
+    const account = this.account();
+    if (
+      !account ||
+      !this.modalAmount ||
+      !this.transferUsername ||
+      !this.transferAccountNumber
+    )
+      return;
+    this.store.dispatch(
+      AccountDetailActions.submitTransfer({
+        accountId: account.id,
+        req: {
+          amount: this.modalAmount,
+          targetUsername: this.transferUsername,
+          targetAccountNumber: this.transferAccountNumber,
+          description: this.modalDesc || undefined,
+        },
+        idempotencyKey: this.operationIdempotencyKey,
+      }),
+    );
+  }
+
+  onRecipientFieldChange() {
+    // Optimistically clear "valid" the instant either field changes, so a stale confirmation
+    // from a previous (now-edited) combination can never keep the Send button enabled.
+    const hasBothFields = !!this.transferUsername && !!this.transferAccountNumber;
+    this.recipientStatus.set(hasBothFields ? "checking" : "idle");
+    this.recipientCheck$.next({
+      username: this.transferUsername,
+      accountNumber: this.transferAccountNumber,
+    });
+  }
+
+  hasSufficientFunds(): boolean {
+    const account = this.account();
+    return (
+      !!account && !!this.modalAmount && this.modalAmount <= account.balance
     );
   }
 
@@ -805,8 +887,10 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
   }
 
   txBadgeClass(type: string): string {
-    if (type === "CREDIT" || type === "EXCHANGE_IN") return "badge-credit";
-    if (type === "DEBIT" || type === "EXCHANGE_OUT") return "badge-debit";
+    if (type === "CREDIT" || type === "EXCHANGE_IN" || type === "TRANSFER_IN")
+      return "badge-credit";
+    if (type === "DEBIT" || type === "EXCHANGE_OUT" || type === "TRANSFER_OUT")
+      return "badge-debit";
     return "badge-exchange";
   }
 
@@ -816,18 +900,22 @@ export class AccountOverviewComponent implements OnInit, OnDestroy {
       DEBIT: "Debit",
       EXCHANGE_IN: "Exchange In",
       EXCHANGE_OUT: "Exchange Out",
+      TRANSFER_IN: "Transfer In",
+      TRANSFER_OUT: "Transfer Out",
     };
     return map[type] || type;
   }
 
   txAmountClass(type: string): string {
-    return type === "CREDIT" || type === "EXCHANGE_IN"
+    return type === "CREDIT" || type === "EXCHANGE_IN" || type === "TRANSFER_IN"
       ? "amount-positive"
       : "amount-negative";
   }
 
   txSign(type: string): string {
-    return type === "CREDIT" || type === "EXCHANGE_IN" ? "+" : "-";
+    return type === "CREDIT" || type === "EXCHANGE_IN" || type === "TRANSFER_IN"
+      ? "+"
+      : "-";
   }
 
   formatAmount(amount: number): string {

@@ -1,5 +1,5 @@
 package com.bankapp.model;
 
 public enum OperationType {
-    CREDIT, DEBIT, EXCHANGE_IN, EXCHANGE_OUT
+    TRANSFER_IN, TRANSFER_OUT, EXCHANGE_IN, EXCHANGE_OUT
 }

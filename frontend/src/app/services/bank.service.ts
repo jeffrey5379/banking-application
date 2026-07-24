@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   User, Account, AccountStats, Transaction, TransactionPage, BalancePoint,
-  MoneyRequest, ExchangeRequest, CreateAccountRequest
+  ExchangeRequest, TransferRequest, RecipientCheckResponse, CreateAccountRequest
 } from '../models/bank.models';
 
 @Injectable({ providedIn: 'root' })
@@ -40,22 +40,22 @@ export class BankService {
     });
   }
 
-  credit(accountId: string, req: MoneyRequest, idempotencyKey: string): Observable<Transaction> {
-    return this.http.post<Transaction>(`${this.api}/accounts/${accountId}/credit`, req, {
-      headers: { 'Idempotency-Key': idempotencyKey },
-    });
-  }
-
-  debit(accountId: string, req: MoneyRequest, idempotencyKey: string): Observable<Transaction> {
-    return this.http.post<Transaction>(`${this.api}/accounts/${accountId}/debit`, req, {
-      headers: { 'Idempotency-Key': idempotencyKey },
-    });
-  }
-
   exchange(accountId: string, req: ExchangeRequest, idempotencyKey: string): Observable<Transaction[]> {
     return this.http.post<Transaction[]>(`${this.api}/accounts/${accountId}/exchange`, req, {
       headers: { 'Idempotency-Key': idempotencyKey },
     });
+  }
+
+  transfer(accountId: string, req: TransferRequest, idempotencyKey: string): Observable<Transaction[]> {
+    return this.http.post<Transaction[]>(`${this.api}/accounts/${accountId}/transfer`, req, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+  }
+
+  checkRecipient(username: string, accountNumber: string): Observable<RecipientCheckResponse> {
+    return this.http.get<RecipientCheckResponse>(
+      `${this.api}/accounts/recipient?username=${encodeURIComponent(username)}&accountNumber=${encodeURIComponent(accountNumber)}`
+    );
   }
 
   // ── Transactions ──────────────────────────────────────────────────

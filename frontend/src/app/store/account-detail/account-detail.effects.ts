@@ -121,34 +121,6 @@ export class AccountDetailEffects {
     ),
   );
 
-  submitCredit$ = createEffect(() =>
-    this.actions$.pipe(
-      ofType(AccountDetailActions.submitCredit),
-      exhaustMap(({ accountId, req, idempotencyKey }) =>
-        this.bankService.credit(accountId, req, idempotencyKey).pipe(
-          map((transaction) => AccountDetailActions.submitCreditSuccess({ transaction })),
-          catchError((e) =>
-            of(AccountDetailActions.submitCreditFailure({ error: e.error?.message ?? e.message ?? 'Credit operation failed.' })),
-          ),
-        ),
-      ),
-    ),
-  );
-
-  submitDebit$ = createEffect(() =>
-    this.actions$.pipe(
-      ofType(AccountDetailActions.submitDebit),
-      exhaustMap(({ accountId, req, idempotencyKey }) =>
-        this.bankService.debit(accountId, req, idempotencyKey).pipe(
-          map((transaction) => AccountDetailActions.submitDebitSuccess({ transaction })),
-          catchError((e) =>
-            of(AccountDetailActions.submitDebitFailure({ error: e.error?.message ?? e.message ?? 'Debit operation failed.' })),
-          ),
-        ),
-      ),
-    ),
-  );
-
   submitExchange$ = createEffect(() =>
     this.actions$.pipe(
       ofType(AccountDetailActions.submitExchange),
@@ -157,6 +129,20 @@ export class AccountDetailEffects {
           map((transactions) => AccountDetailActions.submitExchangeSuccess({ transactions })),
           catchError((e) =>
             of(AccountDetailActions.submitExchangeFailure({ error: e.error?.message ?? e.message ?? 'Exchange operation failed.' })),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  submitTransfer$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(AccountDetailActions.submitTransfer),
+      exhaustMap(({ accountId, req, idempotencyKey }) =>
+        this.bankService.transfer(accountId, req, idempotencyKey).pipe(
+          map((transactions) => AccountDetailActions.submitTransferSuccess({ transactions })),
+          catchError((e) =>
+            of(AccountDetailActions.submitTransferFailure({ error: e.error?.message ?? e.message ?? 'Transfer failed.' })),
           ),
         ),
       ),
@@ -181,9 +167,8 @@ export class AccountDetailEffects {
   resyncOnFailure$ = createEffect(() =>
     this.actions$.pipe(
       ofType(
-        AccountDetailActions.submitCreditFailure,
-        AccountDetailActions.submitDebitFailure,
         AccountDetailActions.submitExchangeFailure,
+        AccountDetailActions.submitTransferFailure,
       ),
       withLatestFrom(this.store.select(selectAccountId)),
       switchMap(([, accountId]) => {
@@ -201,9 +186,8 @@ export class AccountDetailEffects {
   refreshBalanceHistory$ = createEffect(() =>
     this.actions$.pipe(
       ofType(
-        AccountDetailActions.submitCreditSuccess,
-        AccountDetailActions.submitDebitSuccess,
         AccountDetailActions.submitExchangeSuccess,
+        AccountDetailActions.submitTransferSuccess,
       ),
       withLatestFrom(this.store.select(selectAccountId)),
       switchMap(([, accountId]) => {
@@ -228,9 +212,8 @@ export class AccountDetailEffects {
   refreshStats$ = createEffect(() =>
     this.actions$.pipe(
       ofType(
-        AccountDetailActions.submitCreditSuccess,
-        AccountDetailActions.submitDebitSuccess,
         AccountDetailActions.submitExchangeSuccess,
+        AccountDetailActions.submitTransferSuccess,
       ),
       withLatestFrom(this.store.select(selectAccountId)),
       switchMap(([, accountId]) => {

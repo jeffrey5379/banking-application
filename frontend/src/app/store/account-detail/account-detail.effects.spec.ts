@@ -34,9 +34,8 @@ describe('AccountDetailEffects', () => {
     | 'getExchangeRates'
     | 'getTransactionsPaged'
     | 'getBalanceHistory'
-    | 'credit'
-    | 'debit'
     | 'exchange'
+    | 'transfer'
   >>;
 
   beforeEach(() => {
@@ -46,9 +45,8 @@ describe('AccountDetailEffects', () => {
       getExchangeRates: jest.fn(),
       getTransactionsPaged: jest.fn(),
       getBalanceHistory: jest.fn(),
-      credit: jest.fn(),
-      debit: jest.fn(),
       exchange: jest.fn(),
+      transfer: jest.fn(),
     };
 
     TestBed.configureTestingModule({
@@ -101,79 +99,6 @@ describe('AccountDetailEffects', () => {
 
   // ── Operation effects ────────────────────────────────────────────────────────
 
-  describe('submitCredit$', () => {
-    it('dispatches submitCreditSuccess on API success', (done) => {
-      bankService.credit.mockReturnValue(of(mockTx));
-      actions$ = of(
-        AccountDetailActions.submitCredit({ accountId: '1', req: { amount: 100 }, idempotencyKey: 'idem-key-1' }),
-      );
-
-      effects.submitCredit$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.submitCreditSuccess({ transaction: mockTx }));
-        done();
-      });
-    });
-
-    it('sends the idempotency key through to the backend', (done) => {
-      bankService.credit.mockReturnValue(of(mockTx));
-      actions$ = of(
-        AccountDetailActions.submitCredit({ accountId: '1', req: { amount: 100 }, idempotencyKey: 'idem-key-1' }),
-      );
-
-      effects.submitCredit$.subscribe(() => {
-        expect(bankService.credit).toHaveBeenCalledWith('1', { amount: 100 }, 'idem-key-1');
-        done();
-      });
-    });
-
-    it('dispatches submitCreditFailure with backend error message', (done) => {
-      bankService.credit.mockReturnValue(
-        throwError(() => ({ error: { message: 'Insufficient funds' } })),
-      );
-      actions$ = of(
-        AccountDetailActions.submitCredit({ accountId: '1', req: { amount: 9999 }, idempotencyKey: 'idem-key-1' }),
-      );
-
-      effects.submitCredit$.subscribe((action) => {
-        expect(action).toEqual(
-          AccountDetailActions.submitCreditFailure({ error: 'Insufficient funds' }),
-        );
-        done();
-      });
-    });
-  });
-
-  describe('submitDebit$', () => {
-    it('dispatches submitDebitSuccess on API success', (done) => {
-      const debitTx = { ...mockTx, type: 'DEBIT' as const };
-      bankService.debit.mockReturnValue(of(debitTx));
-      actions$ = of(
-        AccountDetailActions.submitDebit({ accountId: '1', req: { amount: 50 }, idempotencyKey: 'idem-key-2' }),
-      );
-
-      effects.submitDebit$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.submitDebitSuccess({ transaction: debitTx }));
-        done();
-      });
-    });
-
-    it('dispatches submitDebitFailure on error', (done) => {
-      bankService.debit.mockReturnValue(
-        throwError(() => ({ error: { message: 'Debit not allowed' } })),
-      );
-      actions$ = of(
-        AccountDetailActions.submitDebit({ accountId: '1', req: { amount: 50 }, idempotencyKey: 'idem-key-2' }),
-      );
-
-      effects.submitDebit$.subscribe((action) => {
-        expect(action).toEqual(
-          AccountDetailActions.submitDebitFailure({ error: 'Debit not allowed' }),
-        );
-        done();
-      });
-    });
-  });
-
   describe('submitExchange$', () => {
     it('dispatches submitExchangeSuccess on API success', (done) => {
       bankService.exchange.mockReturnValue(of([mockTx]));
@@ -188,6 +113,66 @@ describe('AccountDetailEffects', () => {
       effects.submitExchange$.subscribe((action) => {
         expect(action).toEqual(
           AccountDetailActions.submitExchangeSuccess({ transactions: [mockTx] }),
+        );
+        done();
+      });
+    });
+  });
+
+  describe('submitTransfer$', () => {
+    it('dispatches submitTransferSuccess on API success', (done) => {
+      bankService.transfer.mockReturnValue(of([mockTx]));
+      actions$ = of(
+        AccountDetailActions.submitTransfer({
+          accountId: '1',
+          req: { amount: 50, targetUsername: 'bob', targetAccountNumber: 'ACC-002' },
+          idempotencyKey: 'idem-key-4',
+        }),
+      );
+
+      effects.submitTransfer$.subscribe((action) => {
+        expect(action).toEqual(
+          AccountDetailActions.submitTransferSuccess({ transactions: [mockTx] }),
+        );
+        done();
+      });
+    });
+
+    it('sends the idempotency key through to the backend', (done) => {
+      bankService.transfer.mockReturnValue(of([mockTx]));
+      actions$ = of(
+        AccountDetailActions.submitTransfer({
+          accountId: '1',
+          req: { amount: 50, targetUsername: 'bob', targetAccountNumber: 'ACC-002' },
+          idempotencyKey: 'idem-key-4',
+        }),
+      );
+
+      effects.submitTransfer$.subscribe(() => {
+        expect(bankService.transfer).toHaveBeenCalledWith(
+          '1',
+          { amount: 50, targetUsername: 'bob', targetAccountNumber: 'ACC-002' },
+          'idem-key-4',
+        );
+        done();
+      });
+    });
+
+    it('dispatches submitTransferFailure with backend error message', (done) => {
+      bankService.transfer.mockReturnValue(
+        throwError(() => ({ error: { message: 'Recipient not found' } })),
+      );
+      actions$ = of(
+        AccountDetailActions.submitTransfer({
+          accountId: '1',
+          req: { amount: 50, targetUsername: 'nobody', targetAccountNumber: 'BOGUS' },
+          idempotencyKey: 'idem-key-4',
+        }),
+      );
+
+      effects.submitTransfer$.subscribe((action) => {
+        expect(action).toEqual(
+          AccountDetailActions.submitTransferFailure({ error: 'Recipient not found' }),
         );
         done();
       });
@@ -220,8 +205,8 @@ describe('AccountDetailEffects', () => {
       store.refreshState();
     });
 
-    it('refreshes account, transactions, balance history, and summary after submitCreditFailure', (done) => {
-      actions$ = of(AccountDetailActions.submitCreditFailure({ error: 'Insufficient funds' }));
+    it('refreshes account, transactions, balance history, and summary after submitExchangeFailure', (done) => {
+      actions$ = of(AccountDetailActions.submitExchangeFailure({ error: 'Insufficient funds' }));
 
       const emitted: Action[] = [];
       effects.resyncOnFailure$.subscribe({
@@ -238,17 +223,14 @@ describe('AccountDetailEffects', () => {
       });
     });
 
-    it('resyncs after submitDebitFailure and submitExchangeFailure too', (done) => {
-      actions$ = of(
-        AccountDetailActions.submitDebitFailure({ error: 'Debit not allowed' }),
-        AccountDetailActions.submitExchangeFailure({ error: 'Exchange failed' }),
-      );
+    it('resyncs after submitTransferFailure too', (done) => {
+      actions$ = of(AccountDetailActions.submitTransferFailure({ error: 'Transfer failed' }));
 
       const emitted: Action[] = [];
       effects.resyncOnFailure$.subscribe({
         next: (a) => emitted.push(a),
         complete: () => {
-          expect(emitted).toHaveLength(8);
+          expect(emitted).toHaveLength(4);
           done();
         },
       });
@@ -263,24 +245,16 @@ describe('AccountDetailEffects', () => {
       store.refreshState();
     });
 
-    it('dispatches loadBalanceHistory after credit success', (done) => {
-      actions$ = of(AccountDetailActions.submitCreditSuccess({ transaction: mockTx }));
-      effects.refreshBalanceHistory$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
-        done();
-      });
-    });
-
-    it('dispatches loadBalanceHistory after debit success', (done) => {
-      actions$ = of(AccountDetailActions.submitDebitSuccess({ transaction: mockTx }));
-      effects.refreshBalanceHistory$.subscribe((action) => {
-        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
-        done();
-      });
-    });
-
     it('dispatches loadBalanceHistory after exchange success', (done) => {
       actions$ = of(AccountDetailActions.submitExchangeSuccess({ transactions: [mockTx] }));
+      effects.refreshBalanceHistory$.subscribe((action) => {
+        expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
+        done();
+      });
+    });
+
+    it('dispatches loadBalanceHistory after transfer success', (done) => {
+      actions$ = of(AccountDetailActions.submitTransferSuccess({ transactions: [mockTx] }));
       effects.refreshBalanceHistory$.subscribe((action) => {
         expect(action).toEqual(AccountDetailActions.loadBalanceHistory({ accountId: '1' }));
         done();
