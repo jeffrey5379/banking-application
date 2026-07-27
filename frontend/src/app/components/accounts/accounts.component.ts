@@ -1,12 +1,20 @@
-import { Component, OnInit, ChangeDetectionStrategy, DestroyRef, inject } from "@angular/core";
+import {
+  Component,
+  OnInit,
+  ChangeDetectionStrategy,
+  DestroyRef,
+  inject,
+  signal,
+} from "@angular/core";
 import { CommonModule } from "@angular/common";
-import { Router } from "@angular/router";
+import { Router, RouterLink } from "@angular/router";
 import { FormsModule } from "@angular/forms";
 import { Store } from "@ngrx/store";
 import { Actions, ofType } from "@ngrx/effects";
 import { toSignal, takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { Account, Currency } from "../../models/bank.models";
+import { Account, Currency, KycStatus } from "../../models/bank.models";
 import { AuthService } from "../../services/auth.service";
+import { KycService } from "../../services/kyc.service";
 import { AccountsActions } from "../../store/accounts/accounts.actions";
 import {
   selectAccounts,
@@ -19,7 +27,7 @@ import {
 @Component({
   selector: "app-accounts",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="page-container">
       <!-- Header row -->
@@ -27,18 +35,28 @@ import {
         <div>
           <h1>Accounts</h1>
         </div>
-        <button class="btn btn-primary" (click)="openAddAccount()">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path
-              d="M7 1v12M1 7h12"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-          New Account
-        </button>
+        @if (kycStatus() === "VERIFIED") {
+          <button class="btn btn-primary" (click)="openAddAccount()">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M7 1v12M1 7h12"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+            </svg>
+            New Account
+          </button>
+        }
       </div>
+
+      <!-- KYC verification banner -->
+      @if (kycStatus() && kycStatus() !== "VERIFIED") {
+        <a class="kyc-banner" routerLink="/kyc">
+          <span>Complete identity verification to open accounts and send transfers.</span>
+          <span class="kyc-banner-cta">Verify now</span>
+        </a>
+      }
 
       <!-- Error -->
       @if (error()) {
@@ -58,8 +76,10 @@ import {
         <div class="balance-summary">
           @for (item of currencyTotals(); track item.currency) {
             <div class="summary-pill">
-              <span class="currency-badge currency-{{ item.currency.toLowerCase() }}">{{ item.currency }}</span>
-              <span class="summary-amount">{{ item.total | number: "1.2-2" }}</span>
+              <span class="currency-badge currency-{{item.currency.toLowerCase()}}">{{ item.currency }}</span>
+              <span class="summary-amount">{{
+                item.total | number: "1.2-2"
+              }}</span>
             </div>
           }
         </div>
@@ -71,10 +91,20 @@ import {
           @for (account of accounts(); track account.id) {
             <div class="account-card" (click)="goToAccount(account)">
               <div class="account-card-header">
-                <span class="currency-badge currency-{{ account.currency.toLowerCase() }}">
+                <span
+                  class="currency-badge currency-{{
+                    account.currency.toLowerCase()
+                  }}"
+                >
                   {{ account.currency }}
                 </span>
-                <svg class="chevron-right" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <svg
+                  class="chevron-right"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                >
                   <path
                     d="M6 4l4 4-4 4"
                     stroke="currentColor"
@@ -85,7 +115,9 @@ import {
                 </svg>
               </div>
               <div class="account-balance">
-                <span class="balance-amount">{{ formatAmount(account.balance) }}</span>
+                <span class="balance-amount">{{
+                  formatAmount(account.balance)
+                }}</span>
                 <span class="balance-currency">{{ account.currency }}</span>
               </div>
               <div class="account-number monospace text-muted text-sm">
@@ -98,13 +130,15 @@ import {
             <div class="empty-state">
               <div class="empty-state-icon">🏦</div>
               <p>No accounts yet</p>
-              <button
-                class="btn btn-primary btn-sm"
-                style="margin-top:8px"
-                (click)="openAddAccount()"
-              >
-                Open first account
-              </button>
+              @if (kycStatus() === "VERIFIED") {
+                <button
+                  class="btn btn-primary btn-sm"
+                  style="margin-top:8px"
+                  (click)="openAddAccount()"
+                >
+                  Open first account
+                </button>
+              }
             </div>
           }
         </div>
@@ -116,7 +150,9 @@ import {
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
               <h3>Open New Account</h3>
-              <button class="modal-close" (click)="showAddAccount = false">×</button>
+              <button class="modal-close" (click)="showAddAccount = false">
+                ×
+              </button>
             </div>
             <div class="modal-body">
               <div class="form-group">
@@ -127,24 +163,33 @@ import {
                   <option value="CHF">Swiss Franc (CHF)</option>
                   <option value="GBP">British Pound (GBP)</option>
                   <option value="SEK">Swedish Krona (SEK)</option>
-                  <option value="VND">Vietnamese Dong (VND)</option>
+                  <option value="PLN">Polish Zloty (PLN)</option>
                 </select>
               </div>
               <p class="text-muted text-sm">
-                The new account will be opened with a zero balance in the selected currency.
+                The new account will be opened with a zero balance in the
+                selected currency.
               </p>
               @if (error()) {
                 <div class="error-banner">{{ error() }}</div>
               }
             </div>
             <div class="modal-footer">
-              <button class="btn btn-ghost" (click)="showAddAccount = false">Cancel</button>
+              <button class="btn btn-ghost" (click)="showAddAccount = false">
+                Cancel
+              </button>
               <button
                 class="btn btn-primary"
                 (click)="addAccount()"
                 [disabled]="addingAccount()"
               >
-                {{ addingAccount() ? "Opening..." : error() ? "Retry" : "Open Account" }}
+                {{
+                  addingAccount()
+                    ? "Opening..."
+                    : error()
+                      ? "Retry"
+                      : "Open Account"
+                }}
               </button>
             </div>
           </div>
@@ -160,6 +205,25 @@ import {
         align-items: flex-start;
         justify-content: space-between;
         margin-bottom: 24px;
+      }
+      .kyc-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 20px;
+        margin-bottom: 24px;
+        background: var(--warning-light);
+        border: 1px solid var(--warning);
+        border-radius: var(--radius-md);
+        color: var(--ink);
+        text-decoration: none;
+        font-size: 13px;
+      }
+      .kyc-banner-cta {
+        font-weight: 600;
+        color: var(--accent);
+        white-space: nowrap;
       }
       .balance-summary {
         display: flex;
@@ -191,6 +255,9 @@ import {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 16px;
+      }
+      .accounts-grid .empty-state {
+        grid-column: 1 / -1;
       }
       .account-card {
         background: var(--surface-elevated);
@@ -246,15 +313,28 @@ import {
 export class AccountsComponent implements OnInit {
   private store = inject(Store);
   private authService = inject(AuthService);
+  private kycService = inject(KycService);
   private router = inject(Router);
   private actions$ = inject(Actions);
   private destroyRef = inject(DestroyRef);
 
-  accounts = toSignal(this.store.select(selectAccounts), { initialValue: [] as Account[] });
-  loading = toSignal(this.store.select(selectAccountsLoading), { initialValue: false });
-  addingAccount = toSignal(this.store.select(selectAddingAccount), { initialValue: false });
-  error = toSignal(this.store.select(selectAccountsError), { initialValue: null });
-  currencyTotals = toSignal(this.store.select(selectCurrencyTotals), { initialValue: [] });
+  accounts = toSignal(this.store.select(selectAccounts), {
+    initialValue: [] as Account[],
+  });
+  loading = toSignal(this.store.select(selectAccountsLoading), {
+    initialValue: false,
+  });
+  addingAccount = toSignal(this.store.select(selectAddingAccount), {
+    initialValue: false,
+  });
+  error = toSignal(this.store.select(selectAccountsError), {
+    initialValue: null,
+  });
+  currencyTotals = toSignal(this.store.select(selectCurrencyTotals), {
+    initialValue: [],
+  });
+
+  kycStatus = signal<KycStatus | null>(null);
 
   showAddAccount = false;
   newCurrency: Currency = "EUR";
@@ -270,6 +350,11 @@ export class AccountsComponent implements OnInit {
       return;
     }
     this.store.dispatch(AccountsActions.loadAccounts({ userId: user.userId }));
+
+    this.kycService.getStatus().subscribe({
+      next: (res) => this.kycStatus.set(res.status),
+      error: () => this.kycStatus.set(null),
+    });
 
     // Only a *Success* closes the modal. On failure it stays open (showing the error inline)
     // so a manual retry reuses the same idempotency key instead of starting a fresh attempt.

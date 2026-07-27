@@ -166,16 +166,18 @@ describe('LoginComponent', () => {
       expect(authService.register).not.toHaveBeenCalled();
     });
 
-    it('registers and navigates to /accounts on success', () => {
+    it('advances to the OTP step and stores the challenge token on success', () => {
       component.username = 'bob';
       component.email = 'bob@example.com';
       component.password = 'pass1234';
-      authService.register.mockReturnValue(of({ token: 'jwt', userId: '2', username: 'bob' }));
+      authService.register.mockReturnValue(of({ challengeToken: 'challenge-token-2' }));
 
       component.onRegister({ invalid: false });
 
       expect(authService.register).toHaveBeenCalledWith('bob', 'bob@example.com', 'pass1234');
-      expect(router.navigate).toHaveBeenCalledWith(['/accounts']);
+      expect(component.step).toBe('otp');
+      expect(component.loading).toBe(false);
+      expect(router.navigate).not.toHaveBeenCalled();
     });
 
     it('shows the backend error message on failure', () => {
@@ -187,6 +189,22 @@ describe('LoginComponent', () => {
 
       expect(component.error).toBe('Username already exists');
       expect(component.loading).toBe(false);
+    });
+
+    it('reuses the shared OTP verification step to complete registration', () => {
+      component.mode = 'register';
+      component.username = 'bob';
+      component.email = 'bob@example.com';
+      component.password = 'pass1234';
+      authService.register.mockReturnValue(of({ challengeToken: 'challenge-token-2' }));
+      component.onRegister({ invalid: false });
+
+      component.otpCode = '111111';
+      authService.verifyOtp.mockReturnValue(of({ token: 'jwt', userId: '2', username: 'bob' }));
+      component.onVerifyOtp();
+
+      expect(authService.verifyOtp).toHaveBeenCalledWith('challenge-token-2', '111111');
+      expect(router.navigate).toHaveBeenCalledWith(['/accounts']);
     });
   });
 
@@ -209,6 +227,20 @@ describe('LoginComponent', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.querySelector('input[name="otpCode"]')).toBeTruthy();
       expect(compiled.querySelector('input[name="password"]')).toBeFalsy();
+    });
+
+    it('shows the OTP form (not the register form) once registration succeeds', () => {
+      component.switchMode('register');
+      authService.register.mockReturnValue(of({ challengeToken: 'challenge-token-2' }));
+      component.username = 'bob';
+      component.email = 'bob@example.com';
+      component.password = 'pass1234';
+      component.onRegister({ invalid: false });
+      fixture.detectChanges();
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.querySelector('input[name="otpCode"]')).toBeTruthy();
+      expect(compiled.querySelector('input[name="email"]')).toBeFalsy();
     });
   });
 });

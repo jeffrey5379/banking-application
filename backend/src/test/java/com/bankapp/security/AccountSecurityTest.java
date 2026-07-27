@@ -5,10 +5,8 @@ import com.bankapp.model.Account;
 import com.bankapp.model.Currency;
 import com.bankapp.model.Operation;
 import com.bankapp.model.OperationType;
-import com.bankapp.model.User;
 import com.bankapp.repository.AccountRepository;
 import com.bankapp.repository.OperationRepository;
-import com.bankapp.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +19,7 @@ import org.springframework.security.core.Authentication;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -31,34 +30,27 @@ class AccountSecurityTest {
 
     @Mock private AccountRepository accountRepository;
     @Mock private OperationRepository operationRepository;
-    @Mock private UserRepository userRepository;
     @Mock private Authentication authentication;
 
     @InjectMocks
     private AccountSecurity accountSecurity;
 
-    private User alice;
-    private User bob;
+    private static final UUID ALICE_ID = UUID.randomUUID();
+    private static final UUID BOB_ID = UUID.randomUUID();
+
     private Account aliceAccount;
 
     @BeforeEach
     void setUp() {
-        alice = new User();
-        alice.setId(1L);
-        alice.setUsername("alice");
-
-        bob = new User();
-        bob.setId(2L);
-        bob.setUsername("bob");
-
         aliceAccount = new Account();
         aliceAccount.setId(10L);
         aliceAccount.setAccountNumber("ACC-AAAAAAAA");
         aliceAccount.setCurrency(Currency.EUR);
         aliceAccount.setBalance(BigDecimal.ZERO);
-        aliceAccount.setUser(alice);
+        aliceAccount.setOwnerId(ALICE_ID);
+        aliceAccount.setOwnerUsername("alice");
 
-        when(authentication.getName()).thenReturn("alice");
+        when(authentication.getPrincipal()).thenReturn(new JwtPrincipal("alice", ALICE_ID));
     }
 
     // ── isOwner ───────────────────────────────────────────────────────────
@@ -71,7 +63,7 @@ class AccountSecurityTest {
 
     @Test
     void isOwner_accountBelongsToOtherUser_returnsFalse() {
-        Account bobAccount = buildAccount(20L, bob);
+        Account bobAccount = buildAccount(20L, BOB_ID, "bob");
         when(accountRepository.findById(20L)).thenReturn(Optional.of(bobAccount));
         assertThat(accountSecurity.isOwner(20L, authentication)).isFalse();
     }
@@ -94,7 +86,7 @@ class AccountSecurityTest {
 
     @Test
     void isOwnerOfTransaction_transactionBelongsToOtherUser_returnsFalse() {
-        Account bobAccount = buildAccount(20L, bob);
+        Account bobAccount = buildAccount(20L, BOB_ID, "bob");
         Operation op = buildOperation(bobAccount);
         when(operationRepository.findById(1L)).thenReturn(Optional.of(op));
         assertThat(accountSecurity.isOwnerOfTransaction(1L, authentication)).isFalse();
@@ -111,25 +103,24 @@ class AccountSecurityTest {
 
     @Test
     void isSelf_matchingUserId_returnsTrue() {
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
-        assertThat(accountSecurity.isSelf(1L, authentication)).isTrue();
+        assertThat(accountSecurity.isSelf(ALICE_ID, authentication)).isTrue();
     }
 
     @Test
     void isSelf_differentUserId_returnsFalse() {
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
-        assertThat(accountSecurity.isSelf(99L, authentication)).isFalse();
+        assertThat(accountSecurity.isSelf(BOB_ID, authentication)).isFalse();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    private Account buildAccount(Long id, User user) {
+    private Account buildAccount(Long id, UUID ownerId, String ownerUsername) {
         Account a = new Account();
         a.setId(id);
         a.setAccountNumber("ACC-" + id);
         a.setCurrency(Currency.EUR);
         a.setBalance(BigDecimal.ZERO);
-        a.setUser(user);
+        a.setOwnerId(ownerId);
+        a.setOwnerUsername(ownerUsername);
         return a;
     }
 

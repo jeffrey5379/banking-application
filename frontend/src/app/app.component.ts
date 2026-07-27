@@ -92,7 +92,7 @@ import { AuthService } from "./services/auth.service";
         max-width: 900px;
         margin: 0 auto;
         padding: 0 24px;
-        height: 56px;
+        height: var(--topbar-height);
         display: flex;
         align-items: center;
         justify-content: space-between;

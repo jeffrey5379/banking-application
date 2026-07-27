@@ -76,14 +76,17 @@ describe('AuthService', () => {
       const req = httpMock.expectOne('/api/auth/register');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({ username: 'bob', email: 'bob@example.com', password: 'pass' });
-      req.flush({ token: 'tok456', userId: '2', username: 'bob' });
+      req.flush({ challengeToken: 'challenge-token-2' });
     });
 
-    it('saves the token to localStorage after registration', () => {
-      service.register('bob', 'bob@example.com', 'pass').subscribe();
-      httpMock.expectOne('/api/auth/register').flush({ token: 'tok456', userId: '2', username: 'bob' });
-      expect(service.isLoggedIn()).toBe(true);
-      expect(service.getToken()).toBe('tok456');
+    it('does not establish a session yet - only the OTP challenge is returned', () => {
+      service.register('bob', 'bob@example.com', 'pass').subscribe((res) => {
+        expect(res).toEqual({ challengeToken: 'challenge-token-2' });
+      });
+      httpMock.expectOne('/api/auth/register').flush({ challengeToken: 'challenge-token-2' });
+
+      expect(service.isLoggedIn()).toBe(false);
+      expect(service.getUser()).toBeNull();
     });
   });
 

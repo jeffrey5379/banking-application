@@ -13,43 +13,10 @@ import java.util.UUID;
 
 public class BankDtos {
 
-    // ── Auth DTOs ─────────────────────────────────────────────────────────
-
-    public record RegisterRequest(
-            @NotBlank String username,
-            @NotBlank String email,
-            @NotBlank String password
-    ) {}
-
-    public record LoginRequest(
-            @NotBlank String username,
-            @NotBlank String password
-    ) {}
-
-    public record LoginChallengeResponse(
-            String challengeToken
-    ) {}
-
-    public record VerifyOtpRequest(
-            @NotBlank String challengeToken,
-            @NotBlank String code
-    ) {}
-
-    public record AuthResponse(
-            String token,
-            UUID userId,
-            String username
-    ) {}
-
     // ── Request DTOs ──────────────────────────────────────────────────────
 
     public record CreateAccountRequest(
             @NotNull Currency currency
-    ) {}
-
-    public record MoneyRequest(
-            @NotNull @DecimalMin(value = "0.01", message = "Amount must be greater than 0") BigDecimal amount,
-            String description
     ) {}
 
     public record ExchangeRequest(
@@ -69,13 +36,6 @@ public class BankDtos {
     ) {}
 
     // ── Response DTOs ─────────────────────────────────────────────────────
-
-    public record UserResponse(
-            UUID id,
-            String username,
-            String email,
-            List<AccountSummaryResponse> accounts
-    ) {}
 
     public record AccountSummaryResponse(
             UUID id,

@@ -53,6 +53,16 @@ describe('jwtInterceptor', () => {
     req.flush([]);
   });
 
+  it('does not attach Authorization header to non-API requests (e.g. a presigned upload URL)', () => {
+    authService.getToken.mockReturnValue('my-jwt');
+
+    http.put('https://minio.local/kyc-documents/some-key?X-Amz-Signature=abc', new Blob()).subscribe();
+    const req = httpMock.expectOne('https://minio.local/kyc-documents/some-key?X-Amz-Signature=abc');
+
+    expect(req.request.headers.has('Authorization')).toBe(false);
+    req.flush(null);
+  });
+
   // ── 401 handling ─────────────────────────────────────────────────────────────
 
   it('clears session and redirects to /login on 401 from a protected endpoint', () => {

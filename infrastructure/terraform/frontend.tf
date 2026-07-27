@@ -16,9 +16,15 @@ data "aws_cloudfront_origin_request_policy" "all_viewer" {
 
 resource "aws_s3_bucket" "frontend" {
   # Account ID suffix ensures a globally unique name
-  bucket        = "${local.name_prefix}-frontend-${data.aws_caller_identity.current.account_id}"
-  force_destroy = false
-  tags          = { Name = "${local.name_prefix}-frontend" }
+  bucket = "${local.name_prefix}-frontend-${data.aws_caller_identity.current.account_id}"
+
+  # This project's own workflow tears the whole stack down and back up regularly -
+  # force_destroy lets `terraform destroy` remove the bucket even though it holds
+  # the built Angular assets. A long-lived deployment would likely want this
+  # false, backed by real deletion protection instead.
+  force_destroy = true
+
+  tags = { Name = "${local.name_prefix}-frontend" }
 }
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
@@ -72,7 +78,7 @@ resource "aws_cloudfront_distribution" "main" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  comment             = "${local.name_prefix}"
+  comment             = local.name_prefix
   price_class         = "PriceClass_100" # US, Canada, Europe only
 
   # ── Origin 1: S3 (Angular SPA) ─────────────────────────────────────────

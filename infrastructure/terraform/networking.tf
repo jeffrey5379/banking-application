@@ -100,3 +100,14 @@ resource "aws_route_table_association" "private_db" {
   subnet_id      = aws_subnet.private_db[count.index].id
   route_table_id = aws_route_table.private.id
 }
+
+# ── Service discovery (ECS Service Connect) ─────────────────────────────────
+# Lets gateway-service reach identity-service/core-banking-service by name
+# (e.g. http://identity-service:8081) instead of hardcoded IPs - see ecs.tf's
+# service_connect_configuration blocks for the per-service DNS aliases.
+
+resource "aws_service_discovery_http_namespace" "main" {
+  name        = "${local.name_prefix}.local"
+  description = "ECS Service Connect namespace for inter-service calls"
+  tags        = { Name = "${local.name_prefix}-service-connect" }
+}

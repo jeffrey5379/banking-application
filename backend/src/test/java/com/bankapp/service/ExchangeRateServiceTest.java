@@ -34,7 +34,7 @@ class ExchangeRateServiceTest {
             rate(Currency.CHF, "1.05000000"),
             rate(Currency.GBP, "1.17000000"),
             rate(Currency.SEK, "0.08700000"),
-            rate(Currency.VND, "0.00003700")
+            rate(Currency.PLN, "0.23000000")
     );
 
     private static ExchangeRate rate(Currency currency, String rateToEur) {

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.10.0" # needs the S3 backend's native use_lockfile support
 
   required_providers {
     aws = {
@@ -12,13 +12,17 @@ terraform {
     }
   }
 
-   backend "s3" {
-     bucket         = "BUCKET_NAME"
-     key            = "bankapp/terraform.tfstate"
-     region         = "us-east-1"
-     dynamodb_table = "terraform-locks"
-     encrypt        = true
-   }
+  # Partial configuration: bucket/region come from infrastructure/scripts/
+  # bootstrap-state.sh via `terraform init -backend-config=...`, not hardcoded
+  # here - the bucket is created by infrastructure/terraform-state/ (a separate
+  # bootstrap module) precisely so this config never needs to hardcode or own a
+  # specific AWS account's bucket name. use_lockfile stores the lock directly in
+  # the bucket (native S3 locking) - no separate DynamoDB table needed.
+  backend "s3" {
+    key          = "bankapp/terraform.tfstate"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

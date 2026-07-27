@@ -1,14 +1,16 @@
 package com.bankapp.service;
 
 import com.bankapp.client.DebitEligibilityClient;
+import com.bankapp.client.KycStatusClient;
 import com.bankapp.dto.BankDtos.*;
 import com.bankapp.exception.DebitNotAllowedException;
 import com.bankapp.exception.InsufficientFundsException;
+import com.bankapp.exception.KycNotVerifiedException;
 import com.bankapp.exception.ResourceNotFoundException;
 import com.bankapp.model.*;
 import com.bankapp.repository.AccountRepository;
 import com.bankapp.repository.OperationRepository;
-import com.bankapp.repository.UserRepository;
+import com.bankapp.security.JwtPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,58 +39,47 @@ class AccountServiceTest {
 
     @Mock private AccountRepository accountRepository;
     @Mock private OperationRepository operationRepository;
-    @Mock private UserRepository userRepository;
     @Mock private ExchangeRateService exchangeRateService;
     @Mock private DebitEligibilityClient debitEligibilityClient;
+    @Mock private KycStatusClient kycStatusClient;
 
     @InjectMocks
     private AccountService accountService;
 
-    private User alice;
-    private User bob;
+    private static final UUID ALICE_ID = UUID.randomUUID();
+    private static final UUID BOB_ID = UUID.randomUUID();
+
     private Account eurAccount;
     private Account usdAccount;
     private Account bobAccount;
 
     @BeforeEach
     void setUp() {
-        alice = new User();
-        alice.setId(1L);
-        alice.setUsername("alice");
-        alice.setEmail("alice@example.com");
-        alice.setPassword("$2a$10$hash");
-
-        bob = new User();
-        bob.setId(2L);
-        bob.setUsername("bob");
-        bob.setEmail("bob@example.com");
-        bob.setPassword("$2a$10$hash");
-
         eurAccount = new Account();
         eurAccount.setId(10L);
         eurAccount.setAccountNumber("ACC-AAAAAAAA");
         eurAccount.setCurrency(Currency.EUR);
         eurAccount.setBalance(new BigDecimal("1000.00"));
-        eurAccount.setUser(alice);
+        eurAccount.setOwnerId(ALICE_ID);
+        eurAccount.setOwnerUsername("alice");
 
         usdAccount = new Account();
         usdAccount.setId(20L);
         usdAccount.setAccountNumber("ACC-BBBBBBBB");
         usdAccount.setCurrency(Currency.USD);
         usdAccount.setBalance(new BigDecimal("500.00"));
-        usdAccount.setUser(alice);
+        usdAccount.setOwnerId(ALICE_ID);
+        usdAccount.setOwnerUsername("alice");
 
         bobAccount = new Account();
         bobAccount.setId(30L);
         bobAccount.setAccountNumber("ACC-CCCCCCCC");
         bobAccount.setCurrency(Currency.EUR);
         bobAccount.setBalance(new BigDecimal("200.00"));
-        bobAccount.setUser(bob);
+        bobAccount.setOwnerId(BOB_ID);
+        bobAccount.setOwnerUsername("bob");
 
-        setCurrentUser("alice");
-
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
-        when(debitEligibilityClient.isDebitAllowed(1L)).thenReturn(true);
+        setCurrentUser("alice", ALICE_ID);
     }
 
     @AfterEach
@@ -104,7 +96,7 @@ class AccountServiceTest {
         AccountSummaryResponse result = accountService.createAccount(new CreateAccountRequest(Currency.EUR));
 
         assertThat(result.currency()).isEqualTo(Currency.EUR);
-        assertThat(result.userId()).isEqualTo(alice.getPublicId());
+        assertThat(result.userId()).isEqualTo(ALICE_ID);
         assertThat(result.username()).isEqualTo("alice");
         verify(accountRepository).save(any(Account.class));
     }
@@ -134,20 +126,23 @@ class AccountServiceTest {
     }
 
     @Test
-    void createAccount_authenticatedUserNotFound_throwsResourceNotFoundException() {
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.empty());
+    void createAccount_kycNotVerified_propagatesExceptionAndSavesNothing() {
+        doThrow(new KycNotVerifiedException("Identity verification required before this action is allowed"))
+                .when(kycStatusClient).requireVerified(ALICE_ID);
 
         assertThatThrownBy(() -> accountService.createAccount(new CreateAccountRequest(Currency.EUR)))
-                .isInstanceOf(ResourceNotFoundException.class);
+                .isInstanceOf(KycNotVerifiedException.class);
+
+        verify(accountRepository, never()).save(any());
     }
 
     // ── getAccountsByUser ─────────────────────────────────────────────────
 
     @Test
     void getAccountsByUser_validUser_returnsAccounts() {
-        when(accountRepository.findByUserId(1L)).thenReturn(List.of(eurAccount, usdAccount));
+        when(accountRepository.findByOwnerId(ALICE_ID)).thenReturn(List.of(eurAccount, usdAccount));
 
-        List<AccountSummaryResponse> result = accountService.getAccountsByUser(1L);
+        List<AccountSummaryResponse> result = accountService.getAccountsByUser(ALICE_ID);
 
         assertThat(result).hasSize(2);
         assertThat(result).extracting(AccountSummaryResponse::currency)
@@ -183,7 +178,7 @@ class AccountServiceTest {
     }
 
     @Test
-    void transferInternal_doesNotCallDebitEligibilityCheck() {
+    void transferInternal_doesNotCallDebitEligibilityOrKycCheck() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
         when(accountRepository.findById(30L)).thenReturn(Optional.of(bobAccount));
         when(exchangeRateService.getRate(Currency.EUR, Currency.EUR)).thenReturn(BigDecimal.ONE);
@@ -196,6 +191,7 @@ class AccountServiceTest {
         accountService.transferInternal(10L, 30L, new BigDecimal("50.00"), "Seed out", "Seed in");
 
         verify(debitEligibilityClient, never()).isDebitAllowed(any());
+        verify(kycStatusClient, never()).requireVerified(any());
     }
 
     // ── exchange ──────────────────────────────────────────────────────────
@@ -270,7 +266,7 @@ class AccountServiceTest {
         BigDecimal converted = new BigDecimal("100.00");
 
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(true);
         when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
         when(exchangeRateService.getRate(Currency.EUR, Currency.EUR)).thenReturn(rate);
         when(exchangeRateService.convert(new BigDecimal("100.00"), Currency.EUR, Currency.EUR)).thenReturn(converted);
@@ -295,7 +291,8 @@ class AccountServiceTest {
     @Test
     void transfer_unknownUsername_throwsResourceNotFoundException() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(true);
+        when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
 
         assertThatThrownBy(() -> accountService.transfer(10L,
                 new TransferRequest(new BigDecimal("100.00"), "nobody", "ACC-CCCCCCCC", null)))
@@ -308,7 +305,7 @@ class AccountServiceTest {
     @Test
     void transfer_unknownAccountNumber_throwsResourceNotFoundException() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(true);
         when(accountRepository.findByAccountNumber("BOGUS")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> accountService.transfer(10L,
@@ -321,7 +318,7 @@ class AccountServiceTest {
     void transfer_usernameAndAccountNumberDontMatchTheSameAccount_throwsResourceNotFoundException() {
         // "bob" is real and "ACC-AAAAAAAA" is real, but ACC-AAAAAAAA belongs to alice, not bob.
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(true);
         when(accountRepository.findByAccountNumber("ACC-AAAAAAAA")).thenReturn(Optional.of(eurAccount));
 
         assertThatThrownBy(() -> accountService.transfer(10L,
@@ -335,7 +332,7 @@ class AccountServiceTest {
     @Test
     void transfer_sameAccount_throwsIllegalArgumentException() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(true);
         when(accountRepository.findByAccountNumber("ACC-AAAAAAAA")).thenReturn(Optional.of(eurAccount));
 
         assertThatThrownBy(() -> accountService.transfer(10L,
@@ -347,7 +344,7 @@ class AccountServiceTest {
     @Test
     void transfer_insufficientFunds_throwsInsufficientFundsException() {
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(true);
         when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
 
         assertThatThrownBy(() -> accountService.transfer(10L,
@@ -359,8 +356,8 @@ class AccountServiceTest {
 
     @Test
     void transfer_eligibilityDenied_throwsDebitNotAllowedException() {
-        when(debitEligibilityClient.isDebitAllowed(1L)).thenReturn(false);
         when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        when(debitEligibilityClient.isDebitAllowed(10L)).thenReturn(false);
 
         assertThatThrownBy(() -> accountService.transfer(10L,
                 new TransferRequest(new BigDecimal("100.00"), "bob", "ACC-CCCCCCCC", null)))
@@ -371,11 +368,24 @@ class AccountServiceTest {
         verify(operationRepository, never()).save(any());
     }
 
+    @Test
+    void transfer_kycNotVerified_propagatesExceptionBeforeEligibilityCheck() {
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(eurAccount));
+        doThrow(new KycNotVerifiedException("Identity verification required before this action is allowed"))
+                .when(kycStatusClient).requireVerified(ALICE_ID);
+
+        assertThatThrownBy(() -> accountService.transfer(10L,
+                new TransferRequest(new BigDecimal("100.00"), "bob", "ACC-CCCCCCCC", null)))
+                .isInstanceOf(KycNotVerifiedException.class);
+
+        verify(debitEligibilityClient, never()).isDebitAllowed(any());
+        verify(accountRepository, never()).save(any());
+    }
+
     // ── checkRecipient ───────────────────────────────────────────────────────
 
     @Test
     void checkRecipient_matchingUsernameAndAccountNumber_returnsValid() {
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
         when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
 
         RecipientCheckResponse result = accountService.checkRecipient("bob", "ACC-CCCCCCCC");
@@ -384,17 +394,7 @@ class AccountServiceTest {
     }
 
     @Test
-    void checkRecipient_unknownUsername_returnsInvalid() {
-        when(userRepository.findByUsername("nobody")).thenReturn(Optional.empty());
-
-        RecipientCheckResponse result = accountService.checkRecipient("nobody", "ACC-CCCCCCCC");
-
-        assertThat(result.valid()).isFalse();
-    }
-
-    @Test
     void checkRecipient_unknownAccountNumber_returnsInvalid() {
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
         when(accountRepository.findByAccountNumber("BOGUS")).thenReturn(Optional.empty());
 
         RecipientCheckResponse result = accountService.checkRecipient("bob", "BOGUS");
@@ -404,7 +404,6 @@ class AccountServiceTest {
 
     @Test
     void checkRecipient_usernameAndAccountNumberDontMatchTheSameAccount_returnsInvalid() {
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
         when(accountRepository.findByAccountNumber("ACC-AAAAAAAA")).thenReturn(Optional.of(eurAccount));
 
         RecipientCheckResponse result = accountService.checkRecipient("bob", "ACC-AAAAAAAA");
@@ -414,7 +413,6 @@ class AccountServiceTest {
 
     @Test
     void checkRecipient_doesNotMoveAnyMoney() {
-        when(userRepository.findByUsername("bob")).thenReturn(Optional.of(bob));
         when(accountRepository.findByAccountNumber("ACC-CCCCCCCC")).thenReturn(Optional.of(bobAccount));
 
         accountService.checkRecipient("bob", "ACC-CCCCCCCC");
@@ -422,8 +420,6 @@ class AccountServiceTest {
         verify(accountRepository, never()).save(any());
         verify(operationRepository, never()).save(any());
     }
-
-    // ── getTransactionHistory ─────────────────────────────────────────────
 
     // ── getTransaction ────────────────────────────────────────────────────
 
@@ -452,12 +448,10 @@ class AccountServiceTest {
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    private void setCurrentUser(String username) {
-        org.springframework.security.core.userdetails.UserDetails ud =
-                org.springframework.security.core.userdetails.User.builder()
-                        .username(username).password("").roles("USER").build();
+    private void setCurrentUser(String username, UUID userId) {
+        JwtPrincipal principal = new JwtPrincipal(username, userId);
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(ud, null, ud.getAuthorities()));
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
     }
 
     private Operation buildOp(Account account, OperationType type, BigDecimal amount, BigDecimal balanceAfter) {

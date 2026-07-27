@@ -1,6 +1,7 @@
 package com.bankapp.service;
 
 import com.bankapp.client.DebitEligibilityClient;
+import com.bankapp.client.KycStatusClient;
 import com.bankapp.dto.BankDtos.AccountStatsResponse;
 import com.bankapp.dto.BankDtos.AccountSummaryResponse;
 import com.bankapp.dto.BankDtos.BalancePoint;
@@ -17,10 +18,9 @@ import com.bankapp.model.Account;
 import com.bankapp.model.Currency;
 import com.bankapp.model.Operation;
 import com.bankapp.model.OperationType;
-import com.bankapp.model.User;
 import com.bankapp.repository.AccountRepository;
 import com.bankapp.repository.OperationRepository;
-import com.bankapp.repository.UserRepository;
+import com.bankapp.security.JwtPrincipal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -48,9 +48,9 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final OperationRepository operationRepository;
-    private final UserRepository userRepository;
     private final ExchangeRateService exchangeRateService;
     private final DebitEligibilityClient debitEligibilityClient;
+    private final KycStatusClient kycStatusClient;
 
     // ── Public ID resolution ─────────────────────────────────────────────
     // Translates externally-facing UUIDs to internal DB IDs. Called at the
@@ -65,13 +65,6 @@ public class AccountService {
     }
 
     @Transactional(readOnly = true)
-    public Long resolveUserId(UUID publicId) {
-        return userRepository.findByPublicId(publicId)
-                .map(User::getId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + publicId));
-    }
-
-    @Transactional(readOnly = true)
     public Long resolveOperationId(UUID publicId) {
         return operationRepository.findByPublicId(publicId)
                 .map(Operation::getId)
@@ -81,19 +74,22 @@ public class AccountService {
     // ── Account management ────────────────────────────────────────────────
 
     public AccountSummaryResponse createAccount(CreateAccountRequest req) {
-        User user = currentUser();
+        JwtPrincipal caller = currentPrincipal();
+        kycStatusClient.requireVerified(caller.getUserId());
+
         Account account = new Account();
         account.setAccountNumber(generateAccountNumber());
         account.setCurrency(req.currency());
         account.setBalance(BigDecimal.ZERO);
-        account.setUser(user);
+        account.setOwnerId(caller.getUserId());
+        account.setOwnerUsername(caller.getUsername());
         return toSummary(accountRepository.save(account));
     }
 
     @PreAuthorize("@accountSecurity.isSelf(#userId, authentication)")
     @Transactional(readOnly = true)
-    public List<AccountSummaryResponse> getAccountsByUser(Long userId) {
-        return accountRepository.findByUserId(userId).stream()
+    public List<AccountSummaryResponse> getAccountsByUser(UUID userId) {
+        return accountRepository.findByOwnerId(userId).stream()
                 .map(this::toSummary)
                 .toList();
     }
@@ -113,7 +109,7 @@ public class AccountService {
         // Exchange only moves money between the caller's own accounts. Sending to someone
         // else's account - even if you happen to know its UUID - must go through transfer(),
         // which requires proving you know the recipient's username AND account number.
-        if (!target.getUser().getId().equals(source.getUser().getId())) {
+        if (!target.getOwnerId().equals(source.getOwnerId())) {
             throw new ResourceNotFoundException("Account not found: " + req.targetAccountId());
         }
         if (source.getId().equals(target.getId())) {
@@ -147,7 +143,8 @@ public class AccountService {
 
         Account source = getAccount(sourceAccountId);
 
-        if (!debitEligibilityClient.isDebitAllowed(source.getUser().getId())) {
+        kycStatusClient.requireVerified(source.getOwnerId());
+        if (!debitEligibilityClient.isDebitAllowed(sourceAccountId)) {
             throw new DebitNotAllowedException("Debit not allowed. Please contact support for details");
         }
 
@@ -167,17 +164,17 @@ public class AccountService {
         BigDecimal convertedAmount = exchangeRateService.convert(req.amount(), source.getCurrency(), target.getCurrency());
 
         String note = req.description() != null && !req.description().isBlank() ? " - " + req.description() : "";
-        String outDesc = String.format("Transfer to %s (%s)%s", target.getUser().getUsername(), target.getAccountNumber(), note);
-        String inDesc = String.format("Transfer from %s (%s)%s", source.getUser().getUsername(), source.getAccountNumber(), note);
+        String outDesc = String.format("Transfer to %s (%s)%s", target.getOwnerUsername(), target.getAccountNumber(), note);
+        String inDesc = String.format("Transfer from %s (%s)%s", source.getOwnerUsername(), source.getAccountNumber(), note);
 
         return moveFunds(source, target, req.amount(), convertedAmount, rate,
                 OperationType.TRANSFER_OUT, OperationType.TRANSFER_IN, outDesc, inDesc);
     }
 
     // Trusted internal transfer for seed/administrative data (currently only DataSeeder). Skips
-    // the debit-eligibility check and username/account-number recipient verification that guard
-    // the public transfer() endpoint - the caller already has resolved, trusted account ids, not
-    // user-supplied ones. Not wired to any controller; must stay that way.
+    // the debit-eligibility check, KYC gate, and username/account-number recipient verification
+    // that guard the public transfer() endpoint - the caller already has resolved, trusted
+    // account ids, not user-supplied ones. Not wired to any controller; must stay that way.
     public List<OperationResponse> transferInternal(Long sourceAccountId, Long targetAccountId,
                                                      BigDecimal amount, String outDescription, String inDescription) {
         Account source = getAccount(sourceAccountId);
@@ -243,14 +240,8 @@ public class AccountService {
 
     // ── Auth helpers ──────────────────────────────────────────────────────
 
-    private String currentUsername() {
-        return SecurityContextHolder.getContext().getAuthentication().getName();
-    }
-
-    private User currentUser() {
-        String username = currentUsername();
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found"));
+    private JwtPrincipal currentPrincipal() {
+        return (JwtPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -261,9 +252,8 @@ public class AccountService {
     }
 
     private Optional<Account> resolveVerifiedRecipient(String username, String accountNumber) {
-        return userRepository.findByUsername(username)
-                .flatMap(user -> accountRepository.findByAccountNumber(accountNumber)
-                        .filter(acc -> acc.getUser().getId().equals(user.getId())));
+        return accountRepository.findByAccountNumber(accountNumber)
+                .filter(acc -> acc.getOwnerUsername().equals(username));
     }
 
     private Operation buildOperation(Account account, OperationType type, BigDecimal amount,
@@ -294,7 +284,7 @@ public class AccountService {
 
     private AccountSummaryResponse toSummary(Account a) {
         return new AccountSummaryResponse(a.getPublicId(), a.getAccountNumber(), a.getCurrency(),
-                a.getBalance(), a.getUser().getPublicId(), a.getUser().getUsername());
+                a.getBalance(), a.getOwnerId(), a.getOwnerUsername());
     }
 
     private OperationResponse toOperationResponse(Operation op) {

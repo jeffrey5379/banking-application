@@ -33,7 +33,7 @@ public class AccountController {
 
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<AccountSummaryResponse>> getAccountsByUser(@PathVariable UUID userId) {
-        return ResponseEntity.ok(accountService.getAccountsByUser(accountService.resolveUserId(userId)));
+        return ResponseEntity.ok(accountService.getAccountsByUser(userId));
     }
 
     @GetMapping("/{accountId}")

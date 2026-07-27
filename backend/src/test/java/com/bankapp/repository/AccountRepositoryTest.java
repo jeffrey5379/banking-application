@@ -2,7 +2,6 @@ package com.bankapp.repository;
 
 import com.bankapp.model.Account;
 import com.bankapp.model.Currency;
-import com.bankapp.model.User;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,8 +26,6 @@ class AccountRepositoryTest {
     @Autowired
     AccountRepository accountRepository;
     @Autowired
-    UserRepository userRepository;
-    @Autowired
     PlatformTransactionManager txManager;
 
     private Long accountId;
@@ -35,17 +33,12 @@ class AccountRepositoryTest {
     @BeforeEach
     void setUp() {
         new TransactionTemplate(txManager).execute(status -> {
-            User user = new User();
-            user.setUsername("locktest");
-            user.setEmail("lock@test.com");
-            user.setPassword("password");
-            userRepository.save(user);
-
             Account account = new Account();
             account.setAccountNumber("ACC-LOCKTEST");
             account.setCurrency(Currency.EUR);
             account.setBalance(new BigDecimal("1000.00"));
-            account.setUser(user);
+            account.setOwnerId(UUID.randomUUID());
+            account.setOwnerUsername("locktest");
             accountId = accountRepository.save(account).getId();
             return null;
         });
@@ -55,7 +48,6 @@ class AccountRepositoryTest {
     void tearDown() {
         new TransactionTemplate(txManager).execute(status -> {
             accountRepository.deleteAll();
-            userRepository.deleteAll();
             return null;
         });
     }
