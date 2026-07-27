@@ -108,7 +108,7 @@ import { AuthService } from "../../services/auth.service";
           </form>
         }
 
-        @if (mode === "login" && step === "otp") {
+        @if (step === "otp") {
           <form (ngSubmit)="onVerifyOtp()" #otpForm="ngForm">
             <p class="text-muted text-sm" style="margin-bottom:16px">
               Enter the 6-digit code sent to your email.
@@ -144,7 +144,7 @@ import { AuthService } from "../../services/auth.service";
           </form>
         }
 
-        @if (mode === "register") {
+        @if (mode === "register" && step === "credentials") {
           <form
             (ngSubmit)="onRegister(registerForm)"
             #registerForm="ngForm"
@@ -255,7 +255,7 @@ import { AuthService } from "../../services/auth.service";
   styles: [
     `
       .auth-container {
-        min-height: 100vh;
+        min-height: calc(100vh - var(--topbar-height));
         display: flex;
         align-items: center;
         justify-content: center;
@@ -410,7 +410,11 @@ export class LoginComponent {
     this.authService
       .register(this.username, this.email, this.password)
       .subscribe({
-        next: () => this.router.navigate(["/accounts"]),
+        next: (res) => {
+          this.challengeToken = res.challengeToken;
+          this.step = "otp";
+          this.loading = false;
+        },
         error: (err) => {
           this.error = err.error?.message || "Registration failed.";
           this.loading = false;

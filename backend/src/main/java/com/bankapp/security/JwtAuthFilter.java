@@ -7,23 +7,24 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.UUID;
 
+// Stateless: unlike identity-service's filter, this never looks a user up in a database - it
+// trusts the signature on tokens minted by identity-service (shared secret) and builds the
+// Authentication straight from the token's claims. No blacklist check here: revoking a token
+// only takes effect against identity-service itself, core-banking still honors a
+// revoked-but-unexpired token until it naturally expires (tokens are short-lived by design -
+// see README for the tradeoff this accepts).
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final UserDetailsService userDetailsService;
-    private final TokenBlacklist tokenBlacklist;
 
-    public JwtAuthFilter(JwtService jwtService, UserDetailsService userDetailsService, TokenBlacklist tokenBlacklist) {
+    public JwtAuthFilter(JwtService jwtService) {
         this.jwtService = jwtService;
-        this.userDetailsService = userDetailsService;
-        this.tokenBlacklist = tokenBlacklist;
     }
 
     @Override
@@ -38,18 +39,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = authHeader.substring(7);
         try {
-            String username = jwtService.extractUsername(token);
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                if (jwtService.isTokenValid(token, userDetails) && !tokenBlacklist.isRevoked(token)) {
-                    UsernamePasswordAuthenticationToken authToken =
-                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                }
+            if (SecurityContextHolder.getContext().getAuthentication() == null && jwtService.isTokenValid(token)) {
+                String username = jwtService.extractUsername(token);
+                UUID userId = jwtService.extractUserId(token);
+                JwtPrincipal principal = new JwtPrincipal(username, userId);
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         } catch (Exception ignored) {
-            // invalid or expired token — Spring Security will return 401 via entry point
+            // invalid, expired, or malformed token — Spring Security returns 401 via entry point
         }
         filterChain.doFilter(request, response);
     }

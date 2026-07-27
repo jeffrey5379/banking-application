@@ -16,6 +16,7 @@ import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAut
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -45,6 +46,12 @@ class AccountControllerTest {
 
     @MockBean
     private AccountService accountService;
+
+    // Only needed to satisfy IdempotencyStore's constructor dependency in this test slice - no
+    // test here sends an Idempotency-Key header, so IdempotencyStore.execute() always takes the
+    // no-op fast path and never actually calls into this mock.
+    @MockBean
+    private RedisTemplate<String, Object> redisTemplate;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -95,8 +102,7 @@ class AccountControllerTest {
                 new AccountSummaryResponse(ACCOUNT_10, "ACC-AAAAAAAA", Currency.EUR, BigDecimal.ZERO, USER_1, "alice"),
                 new AccountSummaryResponse(ACCOUNT_20, "ACC-BBBBBBBB", Currency.USD, BigDecimal.ZERO, USER_1, "alice")
         );
-        when(accountService.resolveUserId(USER_1)).thenReturn(1L);
-        when(accountService.getAccountsByUser(1L)).thenReturn(accounts);
+        when(accountService.getAccountsByUser(USER_1)).thenReturn(accounts);
 
         mockMvc.perform(get("/api/accounts/user/{userId}", USER_1))
                 .andExpect(status().isOk())
@@ -107,8 +113,7 @@ class AccountControllerTest {
 
     @Test
     void getAccountsByUser_otherUser_returns403() throws Exception {
-        when(accountService.resolveUserId(USER_99)).thenReturn(99L);
-        when(accountService.getAccountsByUser(99L))
+        when(accountService.getAccountsByUser(USER_99))
                 .thenThrow(new AccessDeniedException("Access denied"));
 
         mockMvc.perform(get("/api/accounts/user/{userId}", USER_99))

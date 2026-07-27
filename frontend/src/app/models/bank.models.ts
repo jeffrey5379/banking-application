@@ -1,4 +1,4 @@
-export type Currency = "EUR" | "USD" | "CHF" | "GBP" | "SEK" | "VND";
+export type Currency = "EUR" | "USD" | "CHF" | "GBP" | "SEK" | "PLN";
 export type TransactionType =
   | "CREDIT"
   | "DEBIT"
@@ -88,4 +88,62 @@ export interface AuthResponse {
 export interface AccountStats {
   totalIn: number;
   totalOut: number;
+}
+
+export type KycStatus = "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
+export type KycLevel = "NONE" | "BASIC" | "ENHANCED";
+
+export type IssuingCountry =
+  | "GERMANY"
+  | "FRANCE"
+  | "ITALY"
+  | "SPAIN"
+  | "NETHERLANDS"
+  | "PORTUGAL"
+  | "POLAND"
+  | "UNITED_KINGDOM"
+  | "SWITZERLAND"
+  | "SWEDEN"
+  | "UNITED_STATES"
+  | "CANADA"
+  | "AUSTRALIA"
+  | "JAPAN";
+
+export type KycDocumentType = "ID_DOCUMENT" | "SELFIE";
+
+export interface KycDocumentSummary {
+  id: string;
+  type: KycDocumentType;
+  uploaded: boolean;
+  uploadedAt?: string;
+}
+
+export interface KycStatusResponse {
+  userId: string;
+  status: KycStatus;
+  level: KycLevel;
+  firstName?: string;
+  lastName?: string;
+  issuingCountry?: IssuingCountry;
+  documentNumber?: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  documents: KycDocumentSummary[];
+}
+
+export interface SubmitIdentityRequest {
+  firstName: string;
+  lastName: string;
+  issuingCountry: IssuingCountry;
+  documentNumber: string;
+}
+
+export interface UploadUrlRequest {
+  type: KycDocumentType;
+}
+
+export interface UploadUrlResponse {
+  documentId: string;
+  uploadUrl: string;
 }

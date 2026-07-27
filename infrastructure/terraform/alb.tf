@@ -10,9 +10,13 @@ resource "aws_lb" "main" {
   tags = { Name = "${local.name_prefix}-alb" }
 }
 
-resource "aws_lb_target_group" "backend" {
-  name        = "${local.name_prefix}-tg"
-  port        = var.container_port
+# The only target group - the ALB forwards everything to gateway-service, which
+# does its own internal routing to identity-service/core-banking-service over
+# ECS Service Connect (see ecs.tf). Matches the local dev setup, where the
+# frontend/browser only ever talks to the gateway.
+resource "aws_lb_target_group" "gateway" {
+  name        = "${local.name_prefix}-gateway-tg"
+  port        = var.gateway_container_port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
@@ -29,7 +33,7 @@ resource "aws_lb_target_group" "backend" {
 
   deregistration_delay = 30
 
-  tags = { Name = "${local.name_prefix}-tg" }
+  tags = { Name = "${local.name_prefix}-gateway-tg" }
 }
 
 resource "aws_lb_listener" "http" {
@@ -39,6 +43,6 @@ resource "aws_lb_listener" "http" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.backend.arn
+    target_group_arn = aws_lb_target_group.gateway.arn
   }
 }

@@ -4,6 +4,10 @@ data "aws_ec2_managed_prefix_list" "cloudfront" {
 }
 
 # ── ALB ─────────────────────────────────────────────────────────────────────
+# The ALB only ever forwards to gateway-service - identity-service and
+# core-banking-service are reached internally, over ECS Service Connect, and are
+# never routed to directly (see README Architecture: "gateway-service is the only
+# service the frontend/browser ever talks to").
 
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-sg-alb"
@@ -29,22 +33,50 @@ resource "aws_security_group" "alb" {
 }
 
 # ── ECS Tasks ────────────────────────────────────────────────────────────────
+# Shared by all three services. Self-referencing ingress rules let gateway-service
+# reach identity-service/core-banking-service over ECS Service Connect, and let
+# core-banking reach identity-service's internal (unauthenticated) endpoints
+# (/internal/kyc/**, /internal/users/**) - see README's "Known simplifications".
 
 resource "aws_security_group" "ecs" {
   name        = "${local.name_prefix}-sg-ecs"
-  description = "ECS tasks: accept app port from ALB only"
+  description = "ECS tasks: gateway from ALB, inter-service traffic between all three"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "App traffic from ALB"
-    from_port       = var.container_port
-    to_port         = var.container_port
+    description     = "Gateway traffic from ALB"
+    from_port       = var.gateway_container_port
+    to_port         = var.gateway_container_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
+  ingress {
+    description = "identity-service, reached internally by gateway and core-banking"
+    from_port   = var.identity_container_port
+    to_port     = var.identity_container_port
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "core-banking-service, reached internally by gateway"
+    from_port   = var.core_banking_container_port
+    to_port     = var.core_banking_container_port
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "debit-eligibility-mock, reached internally by core-banking"
+    from_port   = var.debit_eligibility_mock_port
+    to_port     = var.debit_eligibility_mock_port
+    protocol    = "tcp"
+    self        = true
+  }
+
   egress {
-    description = "Outbound: ECR pull, Secrets Manager, RDS"
+    description = "Outbound: ECR pull, Secrets Manager, RDS, Redis, S3, SMTP, external debit-eligibility"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -70,4 +102,22 @@ resource "aws_security_group" "rds" {
   }
 
   tags = { Name = "${local.name_prefix}-sg-rds" }
+}
+
+# ── Redis (ElastiCache) ───────────────────────────────────────────────────────
+
+resource "aws_security_group" "redis" {
+  name        = "${local.name_prefix}-sg-redis"
+  description = "Redis: accept traffic from ECS tasks only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Redis from ECS"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  tags = { Name = "${local.name_prefix}-sg-redis" }
 }

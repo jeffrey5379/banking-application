@@ -4,17 +4,30 @@ environment  = "prod"
 
 availability_zones = ["us-east-1a", "us-east-1b"]
 
-# Database
-db_name              = "bankdb"
-db_username          = "bankapp"
-db_instance_class    = "db.t3.micro"
-db_allocated_storage = 20
-db_multi_az          = false   # set true for production HA
+# Database - one RDS instance each for identity-service and core-banking-service
+db_username           = "bankapp"
+core_banking_db_name  = "corebankingdb"
+identity_db_name      = "identitydb"
+db_instance_class     = "db.t3.micro"
+db_allocated_storage  = 20
+db_multi_az           = false # set true for production HA
 
-# ECS Fargate
-ecs_cpu           = 512   # 0.5 vCPU
-ecs_memory        = 1024  # 1 GB
+# ECS Fargate (applies to all three services: identity, core-banking, gateway)
+ecs_cpu           = 512  # 0.5 vCPU
+ecs_memory        = 1024 # 1 GB
 ecs_desired_count = 1
+
+# Redis (ElastiCache) - shared by all three services
+redis_node_type = "cache.t3.micro"
+
+# Mail - identity-service sends real OTP emails in prod (EmailOtpClient), unlike
+# the MockOtpClient used everywhere else. Point this at a real SMTP account/relay
+# (e.g. Amazon SES SMTP credentials, SendGrid, etc.)
+mail_host     = "CHANGE_ME"
+mail_port     = 587
+mail_username = "CHANGE_ME"
+mail_password = "CHANGE_ME"
+mail_from     = "CHANGE_ME"
 
 # Leave empty to auto-generate a secure random secret
 jwt_secret = ""

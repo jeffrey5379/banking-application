@@ -22,10 +22,10 @@ export class AuthService {
     );
   }
 
-  register(username: string, email: string, password: string): Observable<AuthResponse> {
-    return this.http.post<AuthResponse>('/api/auth/register', { username, email, password }).pipe(
-      tap(res => this.saveSession(res))
-    );
+  // Same two-step shape as login: creating the account never issues a session by itself. The
+  // caller must follow up with verifyOtp() using the returned challenge token.
+  register(username: string, email: string, password: string): Observable<LoginChallengeResponse> {
+    return this.http.post<LoginChallengeResponse>('/api/auth/register', { username, email, password });
   }
 
   logout(): Observable<void> {

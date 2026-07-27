@@ -10,6 +10,8 @@
     <name>Bank App Monorepo</name>
 
     <modules>
+        <module>identity-service</module>
         <module>backend</module>
+        <module>gateway-service</module>
     </modules>
 </project>

@@ -2,7 +2,6 @@ package com.bankapp.config;
 
 import com.bankapp.dto.BankDtos.AccountSummaryResponse;
 import com.bankapp.dto.BankDtos.CreateAccountRequest;
-import com.bankapp.dto.BankDtos.RegisterRequest;
 import com.bankapp.model.Account;
 import com.bankapp.model.Currency;
 import com.bankapp.model.ExchangeRate;
@@ -11,46 +10,80 @@ import com.bankapp.model.OperationType;
 import com.bankapp.repository.AccountRepository;
 import com.bankapp.repository.ExchangeRateRepository;
 import com.bankapp.repository.OperationRepository;
+import com.bankapp.security.JwtPrincipal;
 import com.bankapp.service.AccountService;
-import com.bankapp.service.AuthService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
+// Core-banking's half of seeding. identity-service seeds and KYC-verifies the demo users
+// (alice/bob/carol/bank) at its own startup; this seeder looks them up over HTTP (they already
+// exist, so it must not re-register them) and creates their accounts/starting balances here.
+// Requires identity-service to be up and already seeded before this runs - see docker-compose's
+// service ordering/healthchecks.
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class DataSeeder implements CommandLineRunner {
 
     private static final String BANK_USERNAME = "bank";
 
-    private final AuthService authService;
     private final AccountService accountService;
     private final AccountRepository accountRepository;
     private final OperationRepository operationRepository;
     private final ExchangeRateRepository exchangeRateRepository;
+    private final RestClient identityClient;
+
+    public DataSeeder(AccountService accountService, AccountRepository accountRepository,
+                      OperationRepository operationRepository, ExchangeRateRepository exchangeRateRepository,
+                      @Value("${identity.service.url}") String identityServiceUrl) {
+        this.accountService = accountService;
+        this.accountRepository = accountRepository;
+        this.operationRepository = operationRepository;
+        this.exchangeRateRepository = exchangeRateRepository;
+
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(2));
+        factory.setReadTimeout(Duration.ofSeconds(5));
+        this.identityClient = RestClient.builder()
+                .baseUrl(identityServiceUrl)
+                .requestFactory(factory)
+                .build();
+    }
 
     @Override
     public void run(String... args) {
         log.info("Seeding initial data...");
 
-        exchangeRateRepository.saveAll(List.of(
-                new ExchangeRate(Currency.EUR, new BigDecimal("1.00000000")),
-                new ExchangeRate(Currency.USD, new BigDecimal("0.92000000")),
-                new ExchangeRate(Currency.CHF, new BigDecimal("1.05000000")),
-                new ExchangeRate(Currency.GBP, new BigDecimal("1.17000000")),
-                new ExchangeRate(Currency.SEK, new BigDecimal("0.08700000")),
-                new ExchangeRate(Currency.VND, new BigDecimal("0.00003700"))
-        ));
+        if (exchangeRateRepository.count() == 0) {
+            exchangeRateRepository.saveAll(List.of(
+                    new ExchangeRate(Currency.EUR, new BigDecimal("1.00000000")),
+                    new ExchangeRate(Currency.USD, new BigDecimal("0.92000000")),
+                    new ExchangeRate(Currency.CHF, new BigDecimal("1.05000000")),
+                    new ExchangeRate(Currency.GBP, new BigDecimal("1.17000000")),
+                    new ExchangeRate(Currency.SEK, new BigDecimal("0.08700000")),
+                    new ExchangeRate(Currency.PLN, new BigDecimal("0.23000000"))
+            ));
+        } else {
+            log.info("Exchange rates already seeded, skipping.");
+        }
+
+        UUID bankUserId = setCurrentUser(BANK_USERNAME);
+        if (!accountRepository.findByOwnerId(bankUserId).isEmpty()) {
+            log.info("Demo accounts already seeded, skipping.");
+            SecurityContextHolder.clearContext();
+            return;
+        }
 
         // A fake "source of money" account, capitalized directly (the one place in the whole
         // system money is manufactured instead of moved). Every demo user's starting balance
@@ -58,10 +91,6 @@ public class DataSeeder implements CommandLineRunner {
         // thin air - so the seeded data exercises the exact same ledger mechanics real transfers
         // use, and nobody's balance exists without a matching counter-entry somewhere.
         Long bankAccountId = seedBankAccount();
-
-        authService.register(new RegisterRequest("alice", "alice@example.com", "alice123"));
-        authService.register(new RegisterRequest("bob", "bob@example.com", "bob123"));
-        authService.register(new RegisterRequest("carol", "carol@example.com", "carol123"));
 
         setCurrentUser("alice");
         var aliceEur = accountService.createAccount(new CreateAccountRequest(Currency.EUR));
@@ -89,8 +118,6 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private Long seedBankAccount() {
-        authService.register(new RegisterRequest(BANK_USERNAME, "bank@bankapp.local", "bank-internal-seed"));
-        setCurrentUser(BANK_USERNAME);
         var bankEur = accountService.createAccount(new CreateAccountRequest(Currency.EUR));
         Long bankAccountId = accountService.resolveAccountId(bankEur.id());
 
@@ -101,9 +128,10 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     // Moves seed money from the bank's reserve account to a freshly created user account via a
-    // real double-entry transfer. Bypasses the debit-eligibility check and username/account-number
-    // recipient verification that guard the public transfer() endpoint - not needed here since
-    // both accounts are already resolved, trusted, internal ids (see AccountService.transferInternal).
+    // real double-entry transfer. Bypasses the debit-eligibility check, KYC gate, and
+    // username/account-number recipient verification that guard the public transfer() endpoint -
+    // not needed here since both accounts are already resolved, trusted, internal ids
+    // (see AccountService.transferInternal).
     private void fundFromBank(Long bankAccountId, AccountSummaryResponse target, BigDecimal amount, String description) {
         Long targetAccountId = accountService.resolveAccountId(target.id());
         String outDesc = String.format("Transfer to %s (%s) - %s", target.username(), target.accountNumber(), description);
@@ -219,13 +247,24 @@ public class DataSeeder implements CommandLineRunner {
         return operation;
     }
 
-    private void setCurrentUser(String username) {
-        UserDetails userDetails = User.builder()
-                .username(username)
-                .password("")
-                .roles("USER")
-                .build();
+    // Looks the already-seeded (by identity-service) user up by username and fakes an
+    // authenticated request context for it - the same JwtPrincipal shape a real validated JWT
+    // would produce, so createAccount()/transferInternal() see nothing different from a real
+    // call. Returns the resolved user's id, so callers that need it (e.g. run()'s idempotency
+    // check) don't have to make a second lookup.
+    private UUID setCurrentUser(String username) {
+        InternalUserResponse user = identityClient.get()
+                .uri("/internal/users/{username}", username)
+                .retrieve()
+                .body(InternalUserResponse.class);
+        if (user == null) {
+            throw new IllegalStateException("identity-service has no seeded user named " + username);
+        }
+        JwtPrincipal principal = new JwtPrincipal(user.username(), user.id());
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+        return user.id();
     }
+
+    private record InternalUserResponse(UUID id, String username, String email) {}
 }

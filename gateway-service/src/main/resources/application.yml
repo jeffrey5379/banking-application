@@ -1,0 +1,90 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    gateway:
+      # Order matters: Spring Cloud Gateway picks the first matching route, so more specific
+      # paths (identity-login) must be listed before broader ones that would otherwise also
+      # match (identity-auth, then the core-banking catch-all).
+      #
+      # Rate limiting is Redis-backed (RedisRateLimiter), keyed by client IP (ipKeyResolver,
+      # see RateLimiterConfig). replenishRate is tokens added per SECOND and must be a whole
+      # number, so "N per minute" below N=60 isn't literally enforceable as a flat cap - the
+      # real shape is "burstCapacity allowed immediately, then a steady trickle of
+      # replenishRate/sec after that". For identity-login that's burst 5 then 1/sec
+      # (≈60/min trickle) - not a hard 5-per-minute wall, but a meaningful brute-force
+      # slowdown, same tradeoff real Redis token-bucket limiters make. If Redis itself is
+      # unreachable, Spring Cloud Gateway fails OPEN (allows the request) rather than taking
+      # the whole gateway down - verified locally by stopping Redis and confirming requests
+      # still proxy through.
+      routes:
+        - id: identity-login
+          uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/login
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 5
+        - id: identity-auth
+          uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 20
+        - id: identity-kyc
+          uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/kyc/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 20
+        - id: core-banking
+          uri: ${CORE_BANKING_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 20
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "${FRONTEND_ORIGIN:http://localhost:4200}"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  level:
+    com.bankapp: DEBUG
+    org.springframework.cloud.gateway: INFO

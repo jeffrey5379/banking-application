@@ -13,19 +13,29 @@ output "s3_bucket_name" {
   value       = aws_s3_bucket.frontend.bucket
 }
 
-output "ecr_repository_url" {
-  description = "ECR repository URL for Docker pushes"
-  value       = aws_ecr_repository.backend.repository_url
+output "kyc_documents_bucket_name" {
+  description = "S3 bucket name for KYC document/selfie uploads (identity-service)"
+  value       = aws_s3_bucket.kyc_documents.bucket
+}
+
+output "ecr_repository_urls" {
+  description = "ECR repository URLs by service - key into this for Docker pushes"
+  value       = { for k, r in aws_ecr_repository.this : k => r.repository_url }
 }
 
 output "ecs_cluster_name" {
-  description = "ECS cluster name"
+  description = "ECS cluster name (shared by all three services)"
   value       = aws_ecs_cluster.main.name
 }
 
-output "ecs_service_name" {
-  description = "ECS service name"
-  value       = aws_ecs_service.backend.name
+output "ecs_service_names" {
+  description = "ECS service names by service - key into this for deployments"
+  value = {
+    identity               = aws_ecs_service.identity.name
+    core-banking           = aws_ecs_service.core_banking.name
+    gateway                = aws_ecs_service.gateway.name
+    debit-eligibility-mock = aws_ecs_service.debit_eligibility_mock.name
+  }
 }
 
 output "alb_dns_name" {
@@ -33,10 +43,15 @@ output "alb_dns_name" {
   value       = aws_lb.main.dns_name
 }
 
-output "rds_endpoint" {
-  description = "RDS PostgreSQL endpoint (private)"
-  value       = aws_db_instance.main.endpoint
+output "rds_endpoints" {
+  description = "RDS PostgreSQL endpoints by service (private)"
+  value       = { for k, db in aws_db_instance.this : k => db.endpoint }
   sensitive   = true
+}
+
+output "redis_endpoint" {
+  description = "ElastiCache Redis endpoint (private, shared by all three services)"
+  value       = "${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
 }
 
 output "aws_region" {
