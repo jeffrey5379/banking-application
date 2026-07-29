@@ -35,25 +35,25 @@ export class AuthService {
   }
 
   isLoggedIn(): boolean {
-    return !!localStorage.getItem(this.TOKEN_KEY);
+    return !!sessionStorage.getItem(this.TOKEN_KEY);
   }
 
   getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
+    return sessionStorage.getItem(this.TOKEN_KEY);
   }
 
   getUser(): { userId: string; username: string } | null {
-    const raw = localStorage.getItem(this.USER_KEY);
+    const raw = sessionStorage.getItem(this.USER_KEY);
     return raw ? JSON.parse(raw) : null;
   }
 
   private saveSession(res: AuthResponse): void {
-    localStorage.setItem(this.TOKEN_KEY, res.token);
-    localStorage.setItem(this.USER_KEY, JSON.stringify({ userId: res.userId, username: res.username }));
+    sessionStorage.setItem(this.TOKEN_KEY, res.token);
+    sessionStorage.setItem(this.USER_KEY, JSON.stringify({ userId: res.userId, username: res.username }));
   }
 
   clearSession(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.USER_KEY);
+    sessionStorage.removeItem(this.TOKEN_KEY);
+    sessionStorage.removeItem(this.USER_KEY);
   }
 }

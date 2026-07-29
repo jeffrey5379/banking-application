@@ -118,6 +118,7 @@ h4 {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .badge-credit {
   background: var(--success-light);

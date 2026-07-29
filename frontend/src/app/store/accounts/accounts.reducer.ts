@@ -50,5 +50,11 @@ export const accountsFeature = createFeature({
       addingAccount: false,
       error,
     })),
+    on(AccountsActions.accountBalanceUpdated, (state, { accountId, balance }) => ({
+      ...state,
+      accounts: state.accounts.map((account) =>
+        account.id === accountId ? { ...account, balance } : account,
+      ),
+    })),
   ),
 });

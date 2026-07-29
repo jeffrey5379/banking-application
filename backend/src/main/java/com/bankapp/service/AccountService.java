@@ -51,6 +51,7 @@ public class AccountService {
     private final ExchangeRateService exchangeRateService;
     private final DebitEligibilityClient debitEligibilityClient;
     private final KycStatusClient kycStatusClient;
+    private final BalanceEventPublisher balanceEventPublisher;
 
     // ── Public ID resolution ─────────────────────────────────────────────
     // Translates externally-facing UUIDs to internal DB IDs. Called at the
@@ -197,10 +198,13 @@ public class AccountService {
         Operation outOp = buildOperation(source, outType, amount, source.getCurrency(), source.getBalance(), outDescription, rate, target.getId());
         Operation inOp = buildOperation(target, inType, convertedAmount, target.getCurrency(), target.getBalance(), inDescription, rate, source.getId());
 
-        return List.of(
-                toOperationResponse(operationRepository.save(outOp)),
-                toOperationResponse(operationRepository.save(inOp))
-        );
+        Operation savedOutOp = operationRepository.save(outOp);
+        Operation savedInOp = operationRepository.save(inOp);
+
+        balanceEventPublisher.publishAfterCommit(savedOutOp, source);
+        balanceEventPublisher.publishAfterCommit(savedInOp, target);
+
+        return List.of(toOperationResponse(savedOutOp), toOperationResponse(savedInOp));
     }
 
     @PreAuthorize("@accountSecurity.isOwner(#accountId, authentication)")

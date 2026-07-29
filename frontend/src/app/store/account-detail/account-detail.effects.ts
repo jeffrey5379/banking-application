@@ -5,6 +5,7 @@ import { Store } from '@ngrx/store';
 import { catchError, exhaustMap, filter, map, of, switchMap, tap, withLatestFrom } from 'rxjs';
 import { BankService } from '../../services/bank.service';
 import { AuthService } from '../../services/auth.service';
+import { AccountsActions } from '../accounts/accounts.actions';
 import { AccountDetailActions } from './account-detail.actions';
 import { selectAccountId, selectCurrentPage, selectExchangeRates } from './account-detail.selectors';
 
@@ -220,6 +221,19 @@ export class AccountDetailEffects {
         if (!accountId) return of();
         return of(AccountDetailActions.loadSummary({ accountId }));
       }),
+    ),
+  );
+
+  // Live push from notification.service.ts (SSE) - e.g. someone else's transfer just credited
+  // the account currently open in this tab. Only refetches if it's actually the account being
+  // viewed; loadAccount's own reducer case already does a spinner-free background refresh for
+  // "same account already loaded", which is exactly the live-update UX we want here.
+  refreshOnLiveBalanceUpdate$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(AccountsActions.accountBalanceUpdated),
+      withLatestFrom(this.store.select(selectAccountId)),
+      filter(([{ accountId }, currentAccountId]) => accountId === currentAccountId),
+      map(([{ accountId }]) => AccountDetailActions.loadAccount({ id: accountId })),
     ),
   );
 

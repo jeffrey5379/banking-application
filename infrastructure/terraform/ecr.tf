@@ -4,6 +4,7 @@ locals {
     identity               = "identity-service"
     gateway                = "gateway-service"
     debit-eligibility-mock = "debit-eligibility-mock" # WireMock stub, see backend/wiremock/Dockerfile
+    notification           = "notification-service"
   }
 }
 

@@ -35,6 +35,7 @@ output "ecs_service_names" {
     core-banking           = aws_ecs_service.core_banking.name
     gateway                = aws_ecs_service.gateway.name
     debit-eligibility-mock = aws_ecs_service.debit_eligibility_mock.name
+    notification           = aws_ecs_service.notification.name
   }
 }
 
@@ -52,6 +53,12 @@ output "rds_endpoints" {
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint (private, shared by all three services)"
   value       = "${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
+}
+
+output "docdb_endpoint" {
+  description = "DocumentDB cluster endpoint (private, notification-service only)"
+  value       = aws_docdb_cluster.notification.endpoint
+  sensitive   = true
 }
 
 output "aws_region" {

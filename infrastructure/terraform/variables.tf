@@ -112,6 +112,12 @@ variable "core_banking_container_port" {
   default     = 8082
 }
 
+variable "notification_container_port" {
+  description = "Port notification-service listens on (internal only, reached via ECS Service Connect)"
+  type        = number
+  default     = 8083
+}
+
 # ── Redis (ElastiCache) ───────────────────────────────────────────────────────
 # Shared by all three services: rate limiting (gateway), token blacklist + OTP
 # challenges (identity-service), idempotency-key dedup (core-banking) - see README.
@@ -120,6 +126,26 @@ variable "redis_node_type" {
   description = "ElastiCache node type"
   type        = string
   default     = "cache.t3.micro"
+}
+
+# ── MongoDB / DocumentDB (notification-service) ──────────────────────────────
+# notification-service's message store - see README Architecture for why this is
+# the one service on Mongo instead of Postgres/RDS. Unlike the RDS instances,
+# there's no per-environment db-name variable here: the database name
+# ("notifications") is baked into local.mongo_uri in docdb.tf, matching the
+# fixed name notification-service's own dev/e2e config (application.properties)
+# uses too.
+
+variable "docdb_username" {
+  description = "DocumentDB master username"
+  type        = string
+  default     = "bankapp"
+}
+
+variable "docdb_instance_class" {
+  description = "DocumentDB instance class (db.t3.medium is the smallest AWS supports for DocumentDB - unlike RDS, there is no micro/nano tier)"
+  type        = string
+  default     = "db.t3.medium"
 }
 
 # ── Mail (identity-service OTP delivery in prod) ─────────────────────────────

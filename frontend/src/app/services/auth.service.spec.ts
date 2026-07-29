@@ -8,7 +8,7 @@ describe('AuthService', () => {
   let httpMock: HttpTestingController;
 
   beforeEach(() => {
-    localStorage.clear();
+    sessionStorage.clear();
     TestBed.configureTestingModule({
       providers: [AuthService, provideHttpClient(), provideHttpClientTesting()],
     });
@@ -18,7 +18,7 @@ describe('AuthService', () => {
 
   afterEach(() => {
     httpMock.verify();
-    localStorage.clear();
+    sessionStorage.clear();
   });
 
   // ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ describe('AuthService', () => {
       req.flush({ token: 'tok123', userId: '1', username: 'alice' });
     });
 
-    it('saves the token and user to localStorage after a successful verification', () => {
+    it('saves the token and user to sessionStorage after a successful verification', () => {
       service.verifyOtp('challenge-token-1', '111111').subscribe();
       httpMock.expectOne('/api/auth/verify-otp').flush({ token: 'tok123', userId: '1', username: 'alice' });
       expect(service.getToken()).toBe('tok123');
@@ -122,15 +122,15 @@ describe('AuthService', () => {
     });
 
     it('returns the stored token string', () => {
-      localStorage.setItem('jwt_token', 'my-token');
+      sessionStorage.setItem('jwt_token', 'my-token');
       expect(service.getToken()).toBe('my-token');
     });
   });
 
   describe('clearSession()', () => {
-    it('removes both token and user from localStorage', () => {
-      localStorage.setItem('jwt_token', 'tok');
-      localStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
+    it('removes both token and user from sessionStorage', () => {
+      sessionStorage.setItem('jwt_token', 'tok');
+      sessionStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
 
       service.clearSession();
 
@@ -145,9 +145,9 @@ describe('AuthService', () => {
   });
 
   describe('logout()', () => {
-    it('POSTs to /api/auth/logout and clears localStorage on success', () => {
-      localStorage.setItem('jwt_token', 'tok');
-      localStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
+    it('POSTs to /api/auth/logout and clears sessionStorage on success', () => {
+      sessionStorage.setItem('jwt_token', 'tok');
+      sessionStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
 
       service.logout().subscribe();
       httpMock.expectOne('/api/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
@@ -156,9 +156,9 @@ describe('AuthService', () => {
       expect(service.getUser()).toBeNull();
     });
 
-    it('clears localStorage even when the server call fails', () => {
-      localStorage.setItem('jwt_token', 'tok');
-      localStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
+    it('clears sessionStorage even when the server call fails', () => {
+      sessionStorage.setItem('jwt_token', 'tok');
+      sessionStorage.setItem('auth_user', JSON.stringify({ userId: '1', username: 'alice' }));
 
       service.logout().subscribe({ error: () => {} });
       httpMock.expectOne('/api/auth/logout').flush(null, { status: 500, statusText: 'Error' });

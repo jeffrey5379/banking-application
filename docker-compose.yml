@@ -1,0 +1,193 @@
+# One-command local dev stack - everything README "Running Locally" starts by hand (Redis,
+# MinIO, Mongo, the 4 Spring Boot services, and the Angular dev server), in the right order.
+#
+#   docker compose up --build -d     # first run / after a backend dependency change
+#   docker compose up -d             # subsequent runs (reuses built images)
+#   docker compose logs -f frontend  # or any other service name
+#   docker compose down               # stop everything (add -v to also drop the frontend's
+#                                      # node_modules cache volume)
+#
+# Open http://localhost:4200 once `frontend` is healthy. Every backend service still exposes
+# its normal port on localhost too (8080-8083, 6379, 9000-9001, 8089, 27017) - see README.
+#
+# Frontend hot-reload note: the Angular dev server runs inside a container with ./frontend
+# bind-mounted, so edits on the host are picked up - but Vite's file-watcher can occasionally
+# miss change events on a Windows bind mount. If edits stop showing up, `docker compose
+# restart frontend` (no rebuild needed).
+#
+# This file is for day-to-day local dev. docker-compose.e2e.yml (backend only, no frontend,
+# higher gateway rate limits) is the separate stack the Playwright suite drives - see README
+# "UI Tests (Playwright)".
+
+name: bankapp-dev
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:4200
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  wiremock:
+    build:
+      context: backend/wiremock
+    ports:
+      - "8089:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/__admin/mappings"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  identity-service:
+    build:
+      context: identity-service
+    ports:
+      - "8081:8081"
+    environment:
+      REDIS_HOST: redis
+      KYC_STORAGE_ENDPOINT: http://minio:9000
+      KYC_STORAGE_ALLOWED_ORIGIN: http://localhost:4200
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  core-banking:
+    build:
+      context: backend
+    ports:
+      - "8082:8082"
+    environment:
+      REDIS_HOST: redis
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      KYC_SERVICE_URL: http://identity-service:8081
+      DEBIT_ELIGIBILITY_URL: http://wiremock:8080
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      wiremock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  notification-service:
+    build:
+      context: notification-service
+    ports:
+      - "8083:8083"
+    environment:
+      REDIS_HOST: redis
+      MONGO_HOST: mongo
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 45s
+
+  gateway-service:
+    build:
+      context: gateway-service
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_HOST: redis
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      CORE_BANKING_SERVICE_URL: http://core-banking:8082
+      NOTIFICATION_SERVICE_URL: http://notification-service:8083
+      FRONTEND_ORIGIN: http://localhost:4200
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      core-banking:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    # ./frontend mounted for hot-reload; node_modules gets its own volume so the container's
+    # Linux-built modules are never shadowed by (or overwrite) whatever's installed on the host.
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "4200:4200"
+    # proxy.conf.docker.json targets the gateway by its container name; proxy.conf.json (used
+    # by a native `npm start`) still targets localhost:8080 and is untouched.
+    command: sh -c "npm install && npx ng serve --host 0.0.0.0 --proxy-config proxy.conf.docker.json"
+    depends_on:
+      gateway-service:
+        condition: service_healthy
+    healthcheck:
+      # 127.0.0.1, not localhost: this alpine image resolves "localhost" to ::1 first, and
+      # the dev server only binds IPv4, so "localhost" here gets connection-refused forever.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4200"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  frontend_node_modules:

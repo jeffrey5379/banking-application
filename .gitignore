@@ -4,6 +4,9 @@ frontend/dist/
 frontend/.angular/
 frontend/.cache/
 frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
 
 # Java services (backend, gateway-service, identity-service, ...)
 target/

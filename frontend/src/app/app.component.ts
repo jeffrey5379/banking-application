@@ -1,11 +1,15 @@
-import { Component, ChangeDetectionStrategy } from "@angular/core";
-import { RouterOutlet, RouterLink, Router } from "@angular/router";
+import { Component, ChangeDetectionStrategy, OnInit, OnDestroy } from "@angular/core";
+import { RouterOutlet, RouterLink, Router, NavigationEnd } from "@angular/router";
+import { Subscription, filter } from "rxjs";
 
 import { AuthService } from "./services/auth.service";
+import { NotificationService } from "./services/notification.service";
+import { MessagesService } from "./services/messages.service";
+import { ToastContainerComponent } from "./components/toast/toast-container.component";
 
 @Component({
   selector: "app-root",
-  imports: [RouterOutlet, RouterLink],
+  imports: [RouterOutlet, RouterLink, ToastContainerComponent],
   template: `
     <div class="app-shell">
       <header class="topbar">
@@ -62,6 +66,29 @@ import { AuthService } from "./services/auth.service";
                 Glad to see you
                 <strong>{{ authService.getUser()?.username }}</strong>
               </p>
+              <a routerLink="/messages" class="btn-icon" title="Messages" aria-label="Messages">
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                  <rect
+                    x="2"
+                    y="4"
+                    width="16"
+                    height="12"
+                    rx="2"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  />
+                  <path
+                    d="M3 5.5l7 5 7-5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                @if (messagesService.unreadCount() > 0) {
+                  <span class="unread-badge">{{ messagesService.unreadCount() }}</span>
+                }
+              </a>
               <button class="btn-logout" (click)="logout()">Sign out</button>
             </nav>
           }
@@ -70,6 +97,7 @@ import { AuthService } from "./services/auth.service";
       <main class="main-content">
         <router-outlet />
       </main>
+      <app-toast-container />
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -136,6 +164,40 @@ import { AuthService } from "./services/auth.service";
         background: rgba(255, 255, 255, 0.22);
         border-color: rgba(255, 255, 255, 0.55);
       }
+      .btn-icon {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.12);
+        color: white;
+        text-decoration: none;
+        transition: all 0.15s;
+      }
+      .btn-icon:hover {
+        background: rgba(255, 255, 255, 0.22);
+        border-color: rgba(255, 255, 255, 0.55);
+      }
+      .unread-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        border-radius: 8px;
+        background: var(--accent);
+        color: white;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 16px;
+        text-align: center;
+        border: 1px solid white;
+      }
 
       .main-content {
         flex: 1;
@@ -143,16 +205,51 @@ import { AuthService } from "./services/auth.service";
     `,
   ],
 })
-export class AppComponent {
+export class AppComponent implements OnInit, OnDestroy {
+  private navigationSubscription?: Subscription;
+
   constructor(
     public authService: AuthService,
+    public messagesService: MessagesService,
     private router: Router,
+    private notificationService: NotificationService,
   ) {}
+
+  ngOnInit(): void {
+    // AppComponent is the persistent root shell (never destroyed/recreated by routing), so this
+    // runs once at bootstrap - re-check login state on every navigation too, since that's the
+    // only signal available here that a login/logout just happened elsewhere in the app.
+    this.syncSessionState();
+    this.navigationSubscription = this.router.events
+      .pipe(filter((event) => event instanceof NavigationEnd))
+      .subscribe(() => this.syncSessionState());
+  }
+
+  ngOnDestroy(): void {
+    this.navigationSubscription?.unsubscribe();
+  }
 
   logout() {
     this.authService.logout().subscribe({
-      complete: () => this.router.navigate(['/login']),
-      error: () => this.router.navigate(['/login']),
+      complete: () => this.onLoggedOut(),
+      error: () => this.onLoggedOut(),
     });
+  }
+
+  private onLoggedOut(): void {
+    this.notificationService.disconnect();
+    this.messagesService.clear();
+    this.router.navigate(['/login']);
+  }
+
+  private syncSessionState(): void {
+    if (this.authService.isLoggedIn()) {
+      this.notificationService.connect();
+      // loadIfNeeded() is a no-op once messages are already loaded (or loading), so this is
+      // cheap to call on every navigation - it only does real work right after login.
+      this.messagesService.loadIfNeeded();
+    } else {
+      this.notificationService.disconnect();
+    }
   }
 }
