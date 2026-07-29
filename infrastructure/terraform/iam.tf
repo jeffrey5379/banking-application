@@ -38,6 +38,7 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
           aws_secretsmanager_secret.jwt_secret.arn,
           aws_secretsmanager_secret.mail_username.arn,
           aws_secretsmanager_secret.mail_password.arn,
+          aws_secretsmanager_secret.mongo_uri.arn,
         ]
       )
     }]
@@ -50,7 +51,7 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
 # identity-service can touch the KYC document bucket.
 
 locals {
-  ecs_services = ["gateway", "core-banking", "identity", "debit-eligibility-mock"]
+  ecs_services = ["gateway", "core-banking", "identity", "debit-eligibility-mock", "notification"]
 }
 
 resource "aws_iam_role" "ecs_task" {

@@ -42,6 +42,7 @@ class AccountServiceTest {
     @Mock private ExchangeRateService exchangeRateService;
     @Mock private DebitEligibilityClient debitEligibilityClient;
     @Mock private KycStatusClient kycStatusClient;
+    @Mock private BalanceEventPublisher balanceEventPublisher;
 
     @InjectMocks
     private AccountService accountService;

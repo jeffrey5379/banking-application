@@ -66,3 +66,21 @@ resource "aws_secretsmanager_secret_version" "mail_password" {
   secret_id     = aws_secretsmanager_secret.mail_password.id
   secret_string = var.mail_password
 }
+
+# ── MongoDB connection string (notification-service) ────────────────────────
+# local.mongo_uri (docdb.tf) is the full connection string, credentials included -
+# ECS secrets injection only supports whole env-var values from Secrets Manager,
+# not string-interpolating a secret into a larger plain env var, so the whole URI
+# has to be stored as one secret rather than DB_HOST/DB_PASSWORD-style pieces.
+
+resource "aws_secretsmanager_secret" "mongo_uri" {
+  name                    = "/${var.project_name}/${var.environment}/mongo-uri"
+  description             = "MongoDB connection string for notification-service (DocumentDB cluster)"
+  recovery_window_in_days = 0
+  tags                    = { Name = "${local.name_prefix}-secret-mongo-uri" }
+}
+
+resource "aws_secretsmanager_secret_version" "mongo_uri" {
+  secret_id     = aws_secretsmanager_secret.mongo_uri.id
+  secret_string = local.mongo_uri
+}

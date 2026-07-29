@@ -15,5 +15,9 @@ export const AccountsActions = createActionGroup({
     'Create Account': props<{ currency: Currency; idempotencyKey: string }>(),
     'Create Account Success': props<{ account: Account }>(),
     'Create Account Failure': props<{ error: string }>(),
+
+    // Pushed live by notification.service.ts over SSE when core-banking reports a balance
+    // change - patches just the one account instead of a full reload.
+    'Account Balance Updated': props<{ accountId: string; balance: number }>(),
   },
 });

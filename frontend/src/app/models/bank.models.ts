@@ -147,3 +147,14 @@ export interface UploadUrlResponse {
   documentId: string;
   uploadUrl: string;
 }
+
+export type MessagePriority = "NORMAL" | "HIGH";
+
+export interface Message {
+  id: string;
+  subject: string;
+  body: string;
+  receivedAt: string;
+  read: boolean;
+  priority: MessagePriority;
+}

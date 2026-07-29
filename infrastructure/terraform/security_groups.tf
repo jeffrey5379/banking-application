@@ -33,14 +33,17 @@ resource "aws_security_group" "alb" {
 }
 
 # ── ECS Tasks ────────────────────────────────────────────────────────────────
-# Shared by all three services. Self-referencing ingress rules let gateway-service
+# Shared by all four services. Self-referencing ingress rules let gateway-service
 # reach identity-service/core-banking-service over ECS Service Connect, and let
-# core-banking reach identity-service's internal (unauthenticated) endpoints
-# (/internal/kyc/**, /internal/users/**) - see README's "Known simplifications".
+# core-banking and notification-service reach identity-service's internal
+# (unauthenticated) endpoints (/internal/kyc/**, /internal/users/**) - see
+# README's "Known simplifications". The same self-referencing rule also covers
+# notification-service's own /internal/messages, reached the same way by
+# whichever other service ends up calling it.
 
 resource "aws_security_group" "ecs" {
   name        = "${local.name_prefix}-sg-ecs"
-  description = "ECS tasks: gateway from ALB, inter-service traffic between all three"
+  description = "ECS tasks: gateway from ALB, inter-service traffic between all four"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -75,8 +78,16 @@ resource "aws_security_group" "ecs" {
     self        = true
   }
 
+  ingress {
+    description = "notification-service, reached internally by gateway (/api/notifications/**)"
+    from_port   = var.notification_container_port
+    to_port     = var.notification_container_port
+    protocol    = "tcp"
+    self        = true
+  }
+
   egress {
-    description = "Outbound: ECR pull, Secrets Manager, RDS, Redis, S3, SMTP, external debit-eligibility"
+    description = "Outbound: ECR pull, Secrets Manager, RDS, Redis, DocumentDB, S3, SMTP, external debit-eligibility"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -120,4 +131,22 @@ resource "aws_security_group" "redis" {
   }
 
   tags = { Name = "${local.name_prefix}-sg-redis" }
+}
+
+# ── DocumentDB (notification-service) ────────────────────────────────────────
+
+resource "aws_security_group" "docdb" {
+  name        = "${local.name_prefix}-sg-docdb"
+  description = "DocumentDB: accept MongoDB wire protocol from ECS tasks only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "MongoDB wire protocol from ECS"
+    from_port       = 27017
+    to_port         = 27017
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  tags = { Name = "${local.name_prefix}-sg-docdb" }
 }

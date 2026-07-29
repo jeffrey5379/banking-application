@@ -13,5 +13,6 @@
         <module>identity-service</module>
         <module>backend</module>
         <module>gateway-service</module>
+        <module>notification-service</module>
     </modules>
 </project>

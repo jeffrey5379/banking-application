@@ -5,6 +5,7 @@ import { LoginComponent } from './components/login/login.component';
 import { AccountOverviewComponent } from './components/account-overview/account-overview.component';
 import { TransactionOverviewComponent } from './components/transaction-overview/transaction-overview.component';
 import { KycComponent } from './components/kyc/kyc.component';
+import { MessagesComponent } from './components/messages/messages.component';
 import { authGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -14,5 +15,6 @@ export const routes: Routes = [
   { path: 'accounts/:id', component: AccountOverviewComponent, canActivate: [authGuard] },
   { path: 'transactions/:id', component: TransactionOverviewComponent, canActivate: [authGuard] },
   { path: 'kyc', component: KycComponent, canActivate: [authGuard] },
+  { path: 'messages', component: MessagesComponent, canActivate: [authGuard] },
   { path: '**', redirectTo: '' }
 ];

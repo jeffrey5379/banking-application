@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Deploy one of the four services to ECS Fargate
-# Usage: ./deploy-service.sh <identity|core-banking|gateway|debit-eligibility-mock> [image-tag]
-# Requires: aws CLI, docker, jq, terraform (+ mvn for the three Spring Boot services)
+# Deploy one of the five services to ECS Fargate
+# Usage: ./deploy-service.sh <identity|core-banking|gateway|notification|debit-eligibility-mock> [image-tag]
+# Requires: aws CLI, docker, jq, terraform (+ mvn for the four Spring Boot services)
 
 set -euo pipefail
 
-SERVICE="${1:?Usage: deploy-service.sh <identity|core-banking|gateway|debit-eligibility-mock> [image-tag]}"
+SERVICE="${1:?Usage: deploy-service.sh <identity|core-banking|gateway|notification|debit-eligibility-mock> [image-tag]}"
 
 # Whether this service needs a Maven build first, and where its Dockerfile lives.
 NEEDS_MAVEN_BUILD=true
@@ -13,12 +13,13 @@ case "$SERVICE" in
   identity)     SERVICE_DIR_NAME="identity-service" ;;
   core-banking) SERVICE_DIR_NAME="backend" ;;
   gateway)      SERVICE_DIR_NAME="gateway-service" ;;
+  notification) SERVICE_DIR_NAME="notification-service" ;;
   debit-eligibility-mock)
     SERVICE_DIR_NAME="backend/wiremock" # just packages the WireMock stub, no JVM app to build
     NEEDS_MAVEN_BUILD=false
     ;;
   *)
-    echo "Unknown service: $SERVICE (expected identity, core-banking, gateway, or debit-eligibility-mock)" >&2
+    echo "Unknown service: $SERVICE (expected identity, core-banking, gateway, notification, or debit-eligibility-mock)" >&2
     exit 1
     ;;
 esac

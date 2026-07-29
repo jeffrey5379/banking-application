@@ -1,7 +1,7 @@
 {
   "mappings": [
     {
-      "name": "debit-eligibility - allowed for user 2",
+      "name": "debit-eligibility - allowed for account 2",
       "request": {
         "method": "GET",
         "url": "/debit-eligibility/2"
@@ -17,10 +17,42 @@
       }
     },
     {
-      "name": "debit-eligibility - denied for user 3",
+      "name": "debit-eligibility - allowed for account 3",
       "request": {
         "method": "GET",
         "url": "/debit-eligibility/3"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "isDebitAllowedForUser": true
+        }
+      }
+    },
+    {
+      "name": "debit-eligibility - allowed for account 4",
+      "request": {
+        "method": "GET",
+        "url": "/debit-eligibility/4"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "isDebitAllowedForUser": true
+        }
+      }
+    },
+    {
+      "name": "debit-eligibility - denied for account 5",
+      "request": {
+        "method": "GET",
+        "url": "/debit-eligibility/5"
       },
       "response": {
         "status": 200,
@@ -33,10 +65,27 @@
       }
     },
     {
-      "name": "debit-eligibility - server error for user 4",
+      "name": "debit-eligibility - denied for account 6",
       "request": {
         "method": "GET",
-        "url": "/debit-eligibility/4"
+        "url": "/debit-eligibility/6"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "jsonBody": {
+          "isDebitAllowedForUser": false
+        }
+      }
+    },
+    {
+      "name": "debit-eligibility - server error for all other accounts",
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/debit-eligibility/[0-9]+"
       },
       "response": {
         "status": 500,

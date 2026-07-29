@@ -7,6 +7,11 @@ resource "aws_lb" "main" {
 
   enable_deletion_protection = false
 
+  # AWS default is 60s - too short for notification-service's open SSE connections
+  # (see gateway-service's /api/notifications/stream route), which would otherwise
+  # get silently dropped by the ALB while still idle-healthy from ECS's perspective.
+  idle_timeout = 300
+
   tags = { Name = "${local.name_prefix}-alb" }
 }
 

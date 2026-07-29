@@ -33,6 +33,7 @@ locals {
   # see networking.tf's aws_service_discovery_http_namespace.
   identity_internal_url     = "http://identity-service:${var.identity_container_port}"
   core_banking_internal_url = "http://core-banking:${var.core_banking_container_port}"
+  notification_internal_url = "http://notification-service:${var.notification_container_port}"
   frontend_origin           = "https://${aws_cloudfront_distribution.main.domain_name}"
 
   # Real vendor if one's configured, otherwise the bundled WireMock mock - see
@@ -358,6 +359,119 @@ resource "aws_ecs_service" "debit_eligibility_mock" {
   tags = { Name = "${local.name_prefix}-debit-eligibility-mock-service" }
 }
 
+# ── notification-service ─────────────────────────────────────────────────────
+# WebFlux/Netty - relays core-banking's balance-change events (published to the
+# "account-events" Redis channel, see backend's BalanceEventPublisher) and its own
+# message-created events (see MessageEventPublisher) to the browser over SSE.
+# Owns its message store in DocumentDB (docdb.tf) - the one service on Mongo
+# instead of Postgres/RDS, see README Architecture. MessageSeeder also calls
+# identity-service over HTTP at boot (same pattern as core-banking's DataSeeder)
+# to resolve the demo users it seeds messages for.
+
+resource "aws_ecs_task_definition" "notification" {
+  family                   = "${local.name_prefix}-notification"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.ecs_cpu
+  memory                   = var.ecs_memory
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task["notification"].arn
+
+  container_definitions = jsonencode([{
+    name      = "notification"
+    image     = "${aws_ecr_repository.this["notification"].repository_url}:latest"
+    essential = true
+
+    portMappings = [{
+      name          = "notification-service"
+      containerPort = var.notification_container_port
+      protocol      = "tcp"
+    }]
+
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
+      { name = "REDIS_HOST", value = local.redis_host },
+      { name = "REDIS_PORT", value = local.redis_port },
+      { name = "IDENTITY_SERVICE_URL", value = local.identity_internal_url },
+    ]
+
+    secrets = [
+      { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
+      { name = "MONGO_URI", valueFrom = aws_secretsmanager_secret.mongo_uri.arn },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "notification"
+      }
+    }
+
+    healthCheck = {
+      command     = ["CMD-SHELL", "wget -qO- http://localhost:${var.notification_container_port}/actuator/health || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
+  }])
+
+  tags = { Name = "${local.name_prefix}-notification-task-def" }
+}
+
+resource "aws_ecs_service" "notification" {
+  name            = "${local.name_prefix}-notification"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.notification.arn
+  desired_count   = var.ecs_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = aws_subnet.private_app[*].id
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = false
+  }
+
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_http_namespace.main.arn
+
+    service {
+      port_name = "notification-service"
+      client_alias {
+        port     = var.notification_container_port
+        dns_name = "notification-service"
+      }
+    }
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  # Best-effort startup ordering only, same caveat as core-banking's own depends_on above:
+  # MessageSeeder calls identity-service over HTTP at boot and will crash-and-restart a few
+  # times if identity-service isn't ready yet, self-healing once it is.
+  depends_on = [
+    aws_ecs_service.identity,
+    aws_iam_role_policy_attachment.ecs_execution_managed,
+    aws_elasticache_cluster.main,
+    aws_docdb_cluster_instance.notification,
+  ]
+
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
+
+  tags = { Name = "${local.name_prefix}-notification-service" }
+}
+
 # ── gateway-service ──────────────────────────────────────────────────────────
 # Thin reverse proxy - the only service reachable from the ALB/CloudFront.
 
@@ -386,6 +500,7 @@ resource "aws_ecs_task_definition" "gateway" {
       { name = "REDIS_PORT", value = local.redis_port },
       { name = "IDENTITY_SERVICE_URL", value = local.identity_internal_url },
       { name = "CORE_BANKING_SERVICE_URL", value = local.core_banking_internal_url },
+      { name = "NOTIFICATION_SERVICE_URL", value = local.notification_internal_url },
       { name = "FRONTEND_ORIGIN", value = local.frontend_origin },
     ]
 
@@ -449,6 +564,7 @@ resource "aws_ecs_service" "gateway" {
   depends_on = [
     aws_ecs_service.identity,
     aws_ecs_service.core_banking,
+    aws_ecs_service.notification,
     aws_lb_listener.http,
     aws_iam_role_policy_attachment.ecs_execution_managed,
   ]

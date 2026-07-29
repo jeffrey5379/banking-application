@@ -33,8 +33,8 @@ spring:
             - name: RequestRateLimiter
               args:
                 key-resolver: "#{@ipKeyResolver}"
-                redis-rate-limiter.replenishRate: 1
-                redis-rate-limiter.burstCapacity: 5
+                redis-rate-limiter.replenishRate: ${RATE_LOGIN_REPLENISH:1}
+                redis-rate-limiter.burstCapacity: ${RATE_LOGIN_BURST:5}
         - id: identity-auth
           uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
           predicates:
@@ -43,8 +43,8 @@ spring:
             - name: RequestRateLimiter
               args:
                 key-resolver: "#{@ipKeyResolver}"
-                redis-rate-limiter.replenishRate: 5
-                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.replenishRate: ${RATE_GENERAL_REPLENISH:5}
+                redis-rate-limiter.burstCapacity: ${RATE_GENERAL_BURST:20}
         - id: identity-kyc
           uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
           predicates:
@@ -53,8 +53,15 @@ spring:
             - name: RequestRateLimiter
               args:
                 key-resolver: "#{@ipKeyResolver}"
-                redis-rate-limiter.replenishRate: 5
-                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.replenishRate: ${RATE_GENERAL_REPLENISH:5}
+                redis-rate-limiter.burstCapacity: ${RATE_GENERAL_BURST:20}
+        # No RequestRateLimiter here: it's a token-bucket model built for discrete requests, not a
+        # single long-lived SSE connection - and this route must be listed before the core-banking
+        # catch-all below, same ordering reasoning as identity-login/identity-auth above.
+        - id: notifications
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/notifications/**
         - id: core-banking
           uri: ${CORE_BANKING_SERVICE_URL:http://localhost:8082}
           predicates:
@@ -63,8 +70,8 @@ spring:
             - name: RequestRateLimiter
               args:
                 key-resolver: "#{@ipKeyResolver}"
-                redis-rate-limiter.replenishRate: 5
-                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.replenishRate: ${RATE_GENERAL_REPLENISH:5}
+                redis-rate-limiter.burstCapacity: ${RATE_GENERAL_BURST:20}
       globalcors:
         cors-configurations:
           '[/**]':
