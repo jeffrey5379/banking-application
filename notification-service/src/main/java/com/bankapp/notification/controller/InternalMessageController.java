@@ -13,12 +13,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
-// Service-to-service only, same trust-boundary simplification as identity-service's
-// InternalUserController - never routed through the public gateway (see gateway-service's
-// application.yml, which only proxies /api/**), and explicitly permitAll'd in SecurityConfig
-// rather than bearer-authenticated. Deliberately separate from the public, self-scoped
-// /api/notifications/messages endpoints in MessageController: this one lets a caller create a
-// message for *any* ownerId, which must never be reachable by an end user's own JWT.
 @RestController
 @RequestMapping("/internal/messages")
 @RequiredArgsConstructor

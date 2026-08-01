@@ -57,10 +57,20 @@ class RateLimiterConfigTest {
     }
 
     @Test
-    void xForwardedForHeader_takesPrecedenceOverRemoteAddress() {
-        String key = resolveKey(exchangeFor("10.0.0.1", "core-banking", "203.0.113.5, 10.0.0.1"));
+    void xForwardedForHeader_singleEntry_isTrusted() {
+        // No prior hops: the ALB set X-Forwarded-For to the client IP itself.
+        String key = resolveKey(exchangeFor("10.0.0.1", "core-banking", "203.0.113.5"));
 
         assertThat(key).isEqualTo("203.0.113.5:core-banking");
+    }
+
+    @Test
+    void xForwardedForHeader_lastEntryWins_notClientSpoofedFirstEntry() {
+        // The ALB always appends the real client IP as the last hop. A client prepending a fake
+        // entry (trying to control its own rate-limit bucket) must not make that entry win.
+        String key = resolveKey(exchangeFor("10.0.0.1", "core-banking", "203.0.113.5, 198.51.100.9"));
+
+        assertThat(key).isEqualTo("198.51.100.9:core-banking");
     }
 
     @Test
@@ -70,15 +80,49 @@ class RateLimiterConfigTest {
         assertThat(key).isEqualTo("10.0.0.1:core-banking");
     }
 
+    // ── CloudFront-Viewer-Address ────────────────────────────────────────
+
+    @Test
+    void cloudFrontViewerAddressHeader_ipv4_isUsedDirectly() {
+        String key = resolveKey(exchangeFor("10.0.0.1", "core-banking", null, "203.0.113.5:54321"));
+
+        assertThat(key).isEqualTo("203.0.113.5:core-banking");
+    }
+
+    @Test
+    void cloudFrontViewerAddressHeader_ipv6_stripsBracketsAndPort() {
+        String key = resolveKey(exchangeFor("10.0.0.1", "core-banking", null, "[2001:db8::1]:54321"));
+
+        assertThat(key).isEqualTo("2001:db8::1:core-banking");
+    }
+
+    @Test
+    void cloudFrontViewerAddressHeader_takesPriorityOverXForwardedFor() {
+        // Both present at once shouldn't happen for a real CloudFront request, but if it did,
+        // CloudFront's own signal must win over the hop-counted (and spoofable-without-CloudFront)
+        // X-Forwarded-For chain.
+        String key = resolveKey(exchangeFor("10.0.0.1", "core-banking", "198.51.100.9", "203.0.113.5:54321"));
+
+        assertThat(key).isEqualTo("203.0.113.5:core-banking");
+    }
+
     private String resolveKey(ServerWebExchange exchange) {
         return resolver.resolve(exchange).block();
     }
 
     private ServerWebExchange exchangeFor(String remoteIp, String routeId, String forwardedFor) {
+        return exchangeFor(remoteIp, routeId, forwardedFor, null);
+    }
+
+    private ServerWebExchange exchangeFor(String remoteIp, String routeId, String forwardedFor,
+                                           String cloudFrontViewerAddress) {
         MockServerHttpRequest.BaseBuilder<?> builder = MockServerHttpRequest.get("/api/whatever")
                 .remoteAddress(new InetSocketAddress(remoteIp, 12345));
         if (forwardedFor != null) {
             builder = builder.header("X-Forwarded-For", forwardedFor);
+        }
+        if (cloudFrontViewerAddress != null) {
+            builder = builder.header("CloudFront-Viewer-Address", cloudFrontViewerAddress);
         }
 
         MockServerWebExchange exchange = MockServerWebExchange.from(builder);

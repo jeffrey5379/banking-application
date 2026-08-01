@@ -13,10 +13,11 @@ name: bankapp-e2e
 services:
   redis:
     image: redis:7-alpine
+    command: redis-server --requirepass d94064dfca2847fdde6b3bd5c81e7873 --loglevel verbose
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "d94064dfca2847fdde6b3bd5c81e7873", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -39,7 +40,7 @@ services:
 
   wiremock:
     build:
-      context: backend/wiremock
+      context: core-banking/wiremock
     ports:
       - "8089:8080"
     healthcheck:
@@ -50,10 +51,17 @@ services:
 
   mongo:
     image: mongo:7
+    # Root credentials must match notification-service's dev-default
+    # spring.data.mongodb.uri (application.properties) - see README.
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: bankapp
+      MONGO_INITDB_ROOT_PASSWORD: 0ca39c46e075fcc9b4b5446eeab90e9f
     ports:
       - "27017:27017"
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet",
+             "-u", "bankapp", "-p", "0ca39c46e075fcc9b4b5446eeab90e9f", "--authenticationDatabase", "admin",
+             "--eval", "db.adminCommand('ping')"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -81,7 +89,7 @@ services:
 
   core-banking:
     build:
-      context: backend
+      context: core-banking
     ports:
       - "8082:8082"
     environment:

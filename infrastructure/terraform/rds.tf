@@ -48,7 +48,7 @@ resource "aws_db_instance" "this" {
   password = random_password.db_password[each.key].result
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
+  vpc_security_group_ids = [aws_security_group.rds[each.key].id]
   parameter_group_name   = aws_db_parameter_group.postgres.name
 
   multi_az            = var.db_multi_az

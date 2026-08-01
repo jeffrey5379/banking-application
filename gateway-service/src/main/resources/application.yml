@@ -8,6 +8,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:d94064dfca2847fdde6b3bd5c81e7873}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
   cloud:
     gateway:
       # Order matters: Spring Cloud Gateway picks the first matching route, so more specific

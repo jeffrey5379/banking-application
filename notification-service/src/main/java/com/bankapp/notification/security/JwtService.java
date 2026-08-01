@@ -13,9 +13,7 @@ import java.util.Date;
 import java.util.UUID;
 import java.util.function.Function;
 
-// Verify-only, same shared secret as identity-service/core-banking (backend's JwtService) -
-// notification-service never issues tokens, it only checks the signature/expiry of tokens minted
-// by identity-service and reads the uid claim to know whose events to stream.
+// Verify-only, same shared secret as identity-service/core-banking's JwtService
 @Service
 public class JwtService {
 
@@ -31,6 +29,14 @@ public class JwtService {
 
     public UUID extractUserId(String token) {
         return UUID.fromString(extractClaim(token, c -> c.get("uid", String.class)));
+    }
+
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    public Date extractIssuedAt(String token) {
+        return extractClaim(token, Claims::getIssuedAt);
     }
 
     public boolean isTokenValid(String token) {

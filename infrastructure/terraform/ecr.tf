@@ -1,9 +1,9 @@
 locals {
   ecr_repos = {
-    core-banking           = "core-banking-service" # this repo's original `backend`, see README Architecture
+    core-banking           = "core-banking-service"
     identity               = "identity-service"
     gateway                = "gateway-service"
-    debit-eligibility-mock = "debit-eligibility-mock" # WireMock stub, see backend/wiremock/Dockerfile
+    debit-eligibility-mock = "debit-eligibility-mock"
     notification           = "notification-service"
   }
 }

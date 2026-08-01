@@ -1,15 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// These UI tests drive the real app end to end (real login/OTP, real
-// transfers between seeded users) against the backend stack started via
-// ../docker-compose.e2e.yml - see README "UI tests (Playwright)". Only
-// Angular's own dev server is started here (via the "e2e" build configuration -
-// see angular.json/environment.e2e.ts - which shortens the SSE proactive-renewal
-// interval so 04-balance-updates.spec.ts doesn't have to wait out the real one);
-// the gateway and every service behind it must already be running on their usual
-// localhost ports.
 export default defineConfig({
   testDir: "./e2e",
+  // Resets core-banking's/notification-service's backend state before every run
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   // Tests exercise shared, real backend state (seeded users' account
   // balances) rather than mocks, so they must not interleave.

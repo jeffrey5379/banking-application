@@ -1,7 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 # ── ECS Task Execution Role ──────────────────────────────────────────────────
-# Used by the ECS agent (all three services share it) to pull images from ECR and
+# Used by the ECS agent (all five services share it) to pull images from ECR and
 # inject secrets - not the app's own runtime identity, see the per-service task
 # roles below for that.
 
@@ -36,6 +36,9 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
         [for s in aws_secretsmanager_secret.db_password : s.arn],
         [
           aws_secretsmanager_secret.jwt_secret.arn,
+          aws_secretsmanager_secret.core_banking_jwt_secret.arn,
+          aws_secretsmanager_secret.notification_jwt_secret.arn,
+          aws_secretsmanager_secret.redis_auth_token.arn,
           aws_secretsmanager_secret.mail_username.arn,
           aws_secretsmanager_secret.mail_password.arn,
           aws_secretsmanager_secret.mongo_uri.arn,
