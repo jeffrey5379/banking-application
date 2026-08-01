@@ -34,11 +34,12 @@
             ],
             "scripts": [],
             "allowedCommonJsDependencies": [
-              "jspdf",
-              "html2canvas",
+              "jspdf"
+            ],
+            "externalDependencies": [
               "canvg",
-              "rgbcolor",
-              "raf"
+              "html2canvas",
+              "dompurify"
             ],
             "browser": "src/main.ts"
           },

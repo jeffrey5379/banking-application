@@ -26,8 +26,8 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
 }
 
 locals {
-  redis_host = aws_elasticache_cluster.main.cache_nodes[0].address
-  redis_port = tostring(aws_elasticache_cluster.main.cache_nodes[0].port)
+  redis_host = aws_elasticache_replication_group.main.primary_endpoint_address
+  redis_port = tostring(aws_elasticache_replication_group.main.port)
 
   # Internal DNS names other services reach this one at, via ECS Service Connect -
   # see networking.tf's aws_service_discovery_http_namespace.
@@ -86,6 +86,10 @@ resource "aws_ecs_task_definition" "identity" {
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
       { name = "MAIL_USERNAME", valueFrom = aws_secretsmanager_secret.mail_username.arn },
       { name = "MAIL_PASSWORD", valueFrom = aws_secretsmanager_secret.mail_password.arn },
+      # Verifies X-Service-Token on /internal/** from both callers - see ServiceTokenKeyLocator.
+      { name = "SERVICE_JWT_SECRET_CORE_BANKING", valueFrom = aws_secretsmanager_secret.core_banking_jwt_secret.arn },
+      { name = "SERVICE_JWT_SECRET_NOTIFICATION", valueFrom = aws_secretsmanager_secret.notification_jwt_secret.arn },
+      { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 
     logConfiguration = {
@@ -118,7 +122,7 @@ resource "aws_ecs_service" "identity" {
 
   network_configuration {
     subnets          = aws_subnet.private_app[*].id
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.identity.id]
     assign_public_ip = false
   }
 
@@ -146,7 +150,7 @@ resource "aws_ecs_service" "identity" {
   depends_on = [
     aws_iam_role_policy_attachment.ecs_execution_managed,
     aws_db_instance.this["identity"],
-    aws_elasticache_cluster.main,
+    aws_elasticache_replication_group.main,
   ]
 
   # Ignore task definition changes after initial deploy; updates are done via
@@ -158,7 +162,7 @@ resource "aws_ecs_service" "identity" {
   tags = { Name = "${local.name_prefix}-identity-service" }
 }
 
-# ── core-banking-service (this repo's `backend`) ─────────────────────────────
+# ── core-banking-service ──────────────────────────────────────────────────────
 # Owns Account/Operation/transfers/exchange - no Users table, gates money
 # movement on identity-service's KYC status via internal HTTP calls.
 
@@ -197,6 +201,8 @@ resource "aws_ecs_task_definition" "core_banking" {
     secrets = [
       { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password["core-banking"].arn },
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
+      { name = "SERVICE_JWT_SECRET_CORE_BANKING", valueFrom = aws_secretsmanager_secret.core_banking_jwt_secret.arn },
+      { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 
     logConfiguration = {
@@ -229,7 +235,7 @@ resource "aws_ecs_service" "core_banking" {
 
   network_configuration {
     subnets          = aws_subnet.private_app[*].id
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.core_banking.id]
     assign_public_ip = false
   }
 
@@ -266,7 +272,7 @@ resource "aws_ecs_service" "core_banking" {
     aws_ecs_service.debit_eligibility_mock,
     aws_iam_role_policy_attachment.ecs_execution_managed,
     aws_db_instance.this["core-banking"],
-    aws_elasticache_cluster.main,
+    aws_elasticache_replication_group.main,
   ]
 
   lifecycle {
@@ -275,12 +281,6 @@ resource "aws_ecs_service" "core_banking" {
 
   tags = { Name = "${local.name_prefix}-core-banking-service" }
 }
-
-# ── debit-eligibility-mock ────────────────────────────────────────────────────
-# The same WireMock stub used for local dev (backend/wiremock/mappings), packaged
-# as its own image (backend/wiremock/Dockerfile) and deployed as a lightweight
-# internal-only service - see variables.tf's debit_eligibility_url for how to
-# swap in a real vendor instead once one exists.
 
 resource "aws_ecs_task_definition" "debit_eligibility_mock" {
   family                   = "${local.name_prefix}-debit-eligibility-mock"
@@ -325,7 +325,7 @@ resource "aws_ecs_service" "debit_eligibility_mock" {
 
   network_configuration {
     subnets          = aws_subnet.private_app[*].id
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.debit_eligibility_mock.id]
     assign_public_ip = false
   }
 
@@ -361,7 +361,7 @@ resource "aws_ecs_service" "debit_eligibility_mock" {
 
 # ── notification-service ─────────────────────────────────────────────────────
 # WebFlux/Netty - relays core-banking's balance-change events (published to the
-# "account-events" Redis channel, see backend's BalanceEventPublisher) and its own
+# "account-events" Redis channel, see core-banking's BalanceEventPublisher) and its own
 # message-created events (see MessageEventPublisher) to the browser over SSE.
 # Owns its message store in DocumentDB (docdb.tf) - the one service on Mongo
 # instead of Postgres/RDS, see README Architecture. MessageSeeder also calls
@@ -398,6 +398,9 @@ resource "aws_ecs_task_definition" "notification" {
     secrets = [
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
       { name = "MONGO_URI", valueFrom = aws_secretsmanager_secret.mongo_uri.arn },
+      { name = "SERVICE_JWT_SECRET_NOTIFICATION", valueFrom = aws_secretsmanager_secret.notification_jwt_secret.arn },
+      { name = "SERVICE_JWT_SECRET_CORE_BANKING", valueFrom = aws_secretsmanager_secret.core_banking_jwt_secret.arn },
+      { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 
     logConfiguration = {
@@ -430,7 +433,7 @@ resource "aws_ecs_service" "notification" {
 
   network_configuration {
     subnets          = aws_subnet.private_app[*].id
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.notification.id]
     assign_public_ip = false
   }
 
@@ -461,7 +464,7 @@ resource "aws_ecs_service" "notification" {
   depends_on = [
     aws_ecs_service.identity,
     aws_iam_role_policy_attachment.ecs_execution_managed,
-    aws_elasticache_cluster.main,
+    aws_elasticache_replication_group.main,
     aws_docdb_cluster_instance.notification,
   ]
 
@@ -498,10 +501,15 @@ resource "aws_ecs_task_definition" "gateway" {
     environment = [
       { name = "REDIS_HOST", value = local.redis_host },
       { name = "REDIS_PORT", value = local.redis_port },
+      { name = "REDIS_SSL_ENABLED", value = "true" },
       { name = "IDENTITY_SERVICE_URL", value = local.identity_internal_url },
       { name = "CORE_BANKING_SERVICE_URL", value = local.core_banking_internal_url },
       { name = "NOTIFICATION_SERVICE_URL", value = local.notification_internal_url },
       { name = "FRONTEND_ORIGIN", value = local.frontend_origin },
+    ]
+
+    secrets = [
+      { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 
     logConfiguration = {
@@ -534,7 +542,7 @@ resource "aws_ecs_service" "gateway" {
 
   network_configuration {
     subnets          = aws_subnet.private_app[*].id
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [aws_security_group.gateway.id]
     assign_public_ip = false
   }
 

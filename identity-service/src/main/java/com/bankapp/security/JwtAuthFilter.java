@@ -19,11 +19,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
     private final TokenBlacklist tokenBlacklist;
+    private final AccountRevocationStore accountRevocationStore;
 
-    public JwtAuthFilter(JwtService jwtService, UserDetailsService userDetailsService, TokenBlacklist tokenBlacklist) {
+    public JwtAuthFilter(JwtService jwtService, UserDetailsService userDetailsService, TokenBlacklist tokenBlacklist,
+                          AccountRevocationStore accountRevocationStore) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
         this.tokenBlacklist = tokenBlacklist;
+        this.accountRevocationStore = accountRevocationStore;
     }
 
     @Override
@@ -41,7 +44,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String username = jwtService.extractUsername(token);
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                if (jwtService.isTokenValid(token, userDetails) && !tokenBlacklist.isRevoked(token)) {
+                boolean accountUsable = userDetails.isEnabled()
+                        && !accountRevocationStore.isRevoked(username, jwtService.extractIssuedAt(token));
+                if (jwtService.isTokenValid(token, userDetails) && !tokenBlacklist.isRevoked(token) && accountUsable) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

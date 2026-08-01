@@ -51,8 +51,8 @@ output "rds_endpoints" {
 }
 
 output "redis_endpoint" {
-  description = "ElastiCache Redis endpoint (private, shared by all three services)"
-  value       = "${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
+  description = "ElastiCache Redis endpoint (private, shared by all four services)"
+  value       = "${aws_elasticache_replication_group.main.primary_endpoint_address}:${aws_elasticache_replication_group.main.port}"
 }
 
 output "docdb_endpoint" {

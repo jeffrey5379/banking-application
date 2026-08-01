@@ -11,11 +11,11 @@ SERVICE="${1:?Usage: deploy-service.sh <identity|core-banking|gateway|notificati
 NEEDS_MAVEN_BUILD=true
 case "$SERVICE" in
   identity)     SERVICE_DIR_NAME="identity-service" ;;
-  core-banking) SERVICE_DIR_NAME="backend" ;;
+  core-banking) SERVICE_DIR_NAME="core-banking" ;;
   gateway)      SERVICE_DIR_NAME="gateway-service" ;;
   notification) SERVICE_DIR_NAME="notification-service" ;;
   debit-eligibility-mock)
-    SERVICE_DIR_NAME="backend/wiremock" # just packages the WireMock stub, no JVM app to build
+    SERVICE_DIR_NAME="core-banking/wiremock" # just packages the WireMock stub, no JVM app to build
     NEEDS_MAVEN_BUILD=false
     ;;
   *)

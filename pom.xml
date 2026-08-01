@@ -11,7 +11,7 @@
 
     <modules>
         <module>identity-service</module>
-        <module>backend</module>
+        <module>core-banking</module>
         <module>gateway-service</module>
         <module>notification-service</module>
     </modules>

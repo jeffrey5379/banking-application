@@ -8,9 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-// Service-to-service only (called by core-banking's KycStatusClient), never routed through the
-// public gateway. Left unauthenticated for now, same trust boundary as WireMock's debit-eligibility
-// stub - a real deployment would put mTLS or a service-to-service API key on this, not open trust.
+// Service-to-service only (called by core-banking's KycStatusClient)
 @RestController
 @RequestMapping("/internal/kyc")
 @RequiredArgsConstructor

@@ -1,18 +1,8 @@
 import { APIRequestContext, Page, expect } from "@playwright/test";
+import { createHmac } from "node:crypto";
 
-// The dev/test OTP backend always issues this fixed code instead of a real
-// email (MockOtpClient.MOCK_CODE in identity-service) - see README "Running
-// Locally" / "Authentication".
 export const OTP_CODE = "111111";
 
-// This app's Router runs on a NoopLocationStrategy (see
-// src/app/routing/no-op-location-strategy.ts): the address bar is never
-// updated by in-app navigation, and a fresh page load always starts at the
-// empty route regardless of the URL requested. So `page.goto("/")` is the
-// only meaningful navigation call in this whole suite - every other move
-// (login, opening an account, sending money) has to happen by clicking
-// through the UI, and assertions have to check *rendered content*, never
-// `page.url()`.
 export async function gotoApp(page: Page) {
   await page.goto("/");
 }
@@ -25,10 +15,8 @@ export async function login(page: Page, username: string, password: string) {
   await page.locator("form").getByRole("button", { name: "Sign In", exact: true }).click();
   await page.getByPlaceholder("6-digit code").fill(OTP_CODE);
   await page.getByRole("button", { name: "Verify Code", exact: true }).click();
+  await page.waitForTimeout(500);
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
-  // Wait for the accounts grid's own async load to settle (accounts.component.ts's `loading()`
-  // gate) before returning - clicking an account card while it's still mid-(re)render behind
-  // that gate can detach the very element Playwright just clicked.
   await expect(page.locator(".account-card, .empty-state").first()).toBeVisible();
 }
 
@@ -91,11 +79,6 @@ export interface SendMoneyOptions {
   description?: string;
 }
 
-// Assumes `page` is already on the sender's source account detail page (hero visible) - opens
-// the "Send" modal, fills it in, and waits for the recipient to resolve, leaving the (now
-// enabled) submit button ready to click. Split out from submitSendMoney() so a caller racing
-// something time-sensitive on the *receiving* end (e.g. an SSE renewal window) can do all this
-// slower setup work first and fire the actual state-changing click as its own fast, final step.
 export async function fillSendMoneyForm(page: Page, opts: SendMoneyOptions): Promise<void> {
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await modalField(page, "Amount").fill(opts.amount);
@@ -156,11 +139,6 @@ export async function getUserId(page: Page): Promise<string> {
   return JSON.parse(raw).userId;
 }
 
-// notification-service's own published port, reached directly: POST /internal/messages is
-// service-to-service only and deliberately never routed through the gateway (see
-// InternalMessageController / README "Known simplifications"), so there is no `/api/**` path
-// through localhost:4200's proxy that could reach it - same "already running on its usual
-// localhost port" assumption playwright.config.ts states for every other backend service.
 const NOTIFICATION_SERVICE_URL = "http://localhost:8083";
 
 export interface CreateMessageOptions {
@@ -170,8 +148,27 @@ export interface CreateMessageOptions {
   priority?: "NORMAL" | "HIGH";
 }
 
+const CORE_BANKING_DEV_SERVICE_SECRET_BASE64 = "zacTVpF/cO45cVpOAYTHbF0Rzntz1viiftAiVgBDJhDlRuWIfazQce/nKEJBDc5f";
+
+function base64url(input: Buffer): string {
+  return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function mintCoreBankingServiceToken(): string {
+  const header = { alg: "HS256", kid: "core-banking" };
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const payload = { scope: "internal", iat: nowSeconds, exp: nowSeconds + 60 };
+
+  const signingInput = `${base64url(Buffer.from(JSON.stringify(header)))}.${base64url(Buffer.from(JSON.stringify(payload)))}`;
+  const secretBytes = Buffer.from(CORE_BANKING_DEV_SERVICE_SECRET_BASE64, "base64");
+  const signature = createHmac("sha256", secretBytes).update(signingInput).digest();
+
+  return `${signingInput}.${base64url(signature)}`;
+}
+
 export async function createMessage(request: APIRequestContext, opts: CreateMessageOptions): Promise<void> {
   const res = await request.post(`${NOTIFICATION_SERVICE_URL}/internal/messages`, {
+    headers: { "X-Service-Token": mintCoreBankingServiceToken() },
     data: {
       ownerId: opts.ownerId,
       subject: opts.subject,

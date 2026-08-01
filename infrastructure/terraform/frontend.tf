@@ -8,8 +8,10 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
 
-data "aws_cloudfront_origin_request_policy" "all_viewer" {
-  name = "Managed-AllViewer"
+# Forwards everything Managed-AllViewer does, plus CloudFront's own CloudFront-Viewer-*
+# headers (CloudFront-Viewer-Address in particular)
+data "aws_cloudfront_origin_request_policy" "all_viewer_and_cloudfront_headers" {
+  name = "Managed-AllViewerAndCloudFrontHeaders-2022-06"
 }
 
 # ── S3 Bucket ────────────────────────────────────────────────────────────────
@@ -115,7 +117,7 @@ resource "aws_cloudfront_distribution" "main" {
     compress               = false
 
     cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_and_cloudfront_headers.id
   }
 
   # ── Default behavior: * → S3 (cached) ──────────────────────────────────
