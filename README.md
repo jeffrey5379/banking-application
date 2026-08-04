@@ -46,16 +46,16 @@ Four Spring Boot services behind an API gateway, plus the Angular SPA:
 
 ### Known simplifications (by design, for this project's scope)
 
-- **Service-to-service calls** (`/internal/**`) use a per-caller `X-Service-Token` (HMAC, signed
-  with a secret unique to the calling service) instead of the shared user-JWT secret, and are
-  never routed through the gateway — see `ServiceTokenKeyLocator`/`InternalServiceTokenIssuer`. A
-  larger deployment would likely use mTLS or a service mesh instead.
+- **Service-to-service calls** (`/internal/**`) are left unauthenticated — trust is the network
+  boundary (per-service security groups, never routed through the gateway), not an application-layer
+  credential. A larger deployment would likely use mTLS or a service mesh instead.
 - **Logout only revokes the token you logged out with** (`TokenBlacklist`, per-token, checked by
   identity-service only). `AccountRevocationStore` (Redis, per-user) is already checked by all
   three services, but nothing calls it yet — there's no "log out everywhere" or admin
   account-disable action in the app, so it's a ready mechanism without a caller.
-- **KYC verification is mocked** — submitting identity + document/selfie uploads auto-verifies to
-  `BASIC` instead of calling a real document-authenticity/liveness vendor.
+- **KYC verification is mocked** — there's no real document-authenticity/liveness vendor call.
+  Submitting identity + document/selfie uploads only ever reaches `PENDING`; moving to
+  `VERIFIED`/`REJECTED` is exclusively an admin console action (`/admin`, `Role.ADMIN` only).
 - **DocumentDB runs with TLS disabled** (`docdb.tf`), to keep the reactive Mongo driver's
   connection string simple. A real deployment would leave TLS on.
 
@@ -107,7 +107,7 @@ notification, debit-eligibility-mock) over ECS Service Connect. RDS PostgreSQL 1
 per service that owns data. ElastiCache Redis (AUTH-token + TLS required) → shared by every
 service except debit-eligibility-mock. DocumentDB → notification-service's messages. S3 → KYC
 uploads. ALB → routes only to gateway-service, restricted to CloudFront. Secrets Manager → DB
-passwords, user-JWT secret, per-service X-Service-Token secrets, Redis AUTH token, mail creds.
+passwords, user-JWT secret, Redis AUTH token, mail creds.
 
 ---
 
@@ -179,8 +179,8 @@ that issues tokens or checks passwords — registration and login both follow th
 shape (`{challengeToken}` first, then `POST /api/auth/verify-otp` with an emailed/mocked code to
 actually get a token). Every other service verifies the JWT's signature/expiry itself (shared
 secret) plus a Redis check against `AccountRevocationStore`, with no per-request call back to
-identity-service. Service-to-service calls use a separate `X-Service-Token` mechanism instead —
-see [Known simplifications](#known-simplifications-by-design-for-this-projects-scope).
+identity-service. Service-to-service calls (`/internal/**`) carry no credential at all — see
+[Known simplifications](#known-simplifications-by-design-for-this-projects-scope).
 
 ---
 
@@ -195,7 +195,7 @@ frontend or a browser should ever call directly.
 | ------ | ---------------------- | ---------------------------------------------------------------------------- |
 | POST   | `/api/auth/register`   | Register `{username, email, password}` -> `{challengeToken}` (step 1 of 2FA) |
 | POST   | `/api/auth/login`      | Login `{username, password}` -> `{challengeToken}` (step 1 of 2FA)           |
-| POST   | `/api/auth/verify-otp` | Verify OTP `{challengeToken, code}` -> `{token, userId, username}`           |
+| POST   | `/api/auth/verify-otp` | Verify OTP `{challengeToken, code}` -> `{token, userId, username, admin}`    |
 | POST   | `/api/auth/logout`     | Revoke the current token                                                     |
 
 ### KYC (→ identity-service)
@@ -205,7 +205,7 @@ frontend or a browser should ever call directly.
 | GET    | `/api/kyc/status`                          | Current user's KYC status/level/identity details/document upload state                    |
 | POST   | `/api/kyc/identity`                        | Submit identity `{firstName, lastName, issuingCountry, documentNumber}`                   |
 | POST   | `/api/kyc/documents/upload-url`            | Request a presigned upload URL `{type: ID_DOCUMENT\|SELFIE}` -> `{documentId, uploadUrl}` |
-| POST   | `/api/kyc/documents/{documentId}/complete` | Confirm the upload landed in storage; auto-verifies once both are in                      |
+| POST   | `/api/kyc/documents/{documentId}/complete` | Confirm the upload landed in storage; stays `PENDING` until an admin decides              |
 
 Presigned-URL flow: the browser uploads directly to S3/MinIO (bytes never pass through our
 services), then `complete` does a real `headObject` check before trusting it. Account creation

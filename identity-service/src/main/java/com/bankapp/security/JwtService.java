@@ -6,6 +6,7 @@ import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -31,12 +32,16 @@ public class JwtService {
     }
 
     // "uid" carries the user's public UUID so downstream services (core-banking) can identify
-    // the caller without ever looking a user up by username in a database they don't own - the
-    // public_id convention now doing double duty as the cross-service identity contract.
+    // the caller without ever looking a user up by username in a database
     public String generateToken(UserDetails userDetails, UUID userId) {
+        String role = userDetails.getAuthorities().stream()
+                .findFirst()
+                .map(GrantedAuthority::getAuthority)
+                .orElse("ROLE_USER");
         return Jwts.builder()
                 .subject(userDetails.getUsername())
                 .claim("uid", userId.toString())
+                .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(signingKey)

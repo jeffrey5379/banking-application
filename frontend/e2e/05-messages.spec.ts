@@ -20,7 +20,7 @@ import {
 // permanent extra row for whichever user receives it.
 test.describe("messages", () => {
   test("seeded messages render correctly, and reading one updates the list and the badge in place", async ({ page }) => {
-    await login(page, "carol", "carol123");
+    await login(page, "carol", "$E3ltbJg^b");
 
     // 2 of the 3 seeded messages start unread.
     await expect(page.locator(".unread-badge")).toHaveText("2");
@@ -70,7 +70,7 @@ test.describe("messages", () => {
   });
 
   test("a message pushed while logged in shows a toast and lands at the top of the list unread", async ({ page, request }) => {
-    await login(page, "bob", "bob123");
+    await login(page, "bob", "jh02EZ3DH#");
     const bobId = await getUserId(page);
     const before = await unreadBadgeCount(page);
 
@@ -108,7 +108,7 @@ test.describe("messages", () => {
   });
 
   test("a message pushed with no priority defaults to NORMAL and gets no Important badge", async ({ page, request }) => {
-    await login(page, "alice", "alice123");
+    await login(page, "alice", "0DxKRQZhD!");
     const aliceId = await getUserId(page);
 
     await createMessage(request, {
@@ -128,7 +128,7 @@ test.describe("messages", () => {
   });
 
   test("a message pushed for someone else never shows up as this user's toast or message", async ({ page, request }) => {
-    await login(page, "carol", "carol123");
+    await login(page, "carol", "$E3ltbJg^b");
     const before = await unreadBadgeCount(page);
 
     await createMessage(request, {

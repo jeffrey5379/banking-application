@@ -83,6 +83,7 @@ export interface AuthResponse {
   token: string;
   userId: string;
   username: string;
+  admin: boolean;
 }
 
 export interface AccountStats {
@@ -157,4 +158,12 @@ export interface Message {
   receivedAt: string;
   read: boolean;
   priority: MessagePriority;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  username: string;
+  email: string;
+  active: boolean;
+  kycStatus: KycStatus;
 }

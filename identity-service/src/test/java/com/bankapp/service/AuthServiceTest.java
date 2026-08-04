@@ -129,6 +129,25 @@ class AuthServiceTest {
         assertThat(result.token()).isEqualTo("jwt.token.here");
         assertThat(result.userId()).isEqualTo(ALICE_PUBLIC_ID);
         assertThat(result.username()).isEqualTo("alice");
+        assertThat(result.admin()).isFalse();
+    }
+
+    @Test
+    void verifyOtp_adminUser_returnsAdminTrue() {
+        UserDetails adminDetails = User.builder()
+                .username("admin")
+                .password("$2a$10$hashed")
+                .roles("ADMIN")
+                .build();
+        UserResponse adminResponse = new UserResponse(ALICE_PUBLIC_ID, "admin", "admin@example.com");
+        when(otpStore.verify("challenge-token-1", "111111")).thenReturn("admin");
+        when(userService.loadUserByUsername("admin")).thenReturn(adminDetails);
+        when(userService.getUserByUsername("admin")).thenReturn(adminResponse);
+        when(jwtService.generateToken(adminDetails, ALICE_PUBLIC_ID)).thenReturn("jwt.token.here");
+
+        AuthResponse result = authService.verifyOtp(new VerifyOtpRequest("challenge-token-1", "111111"));
+
+        assertThat(result.admin()).isTrue();
     }
 
     @Test

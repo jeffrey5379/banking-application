@@ -45,12 +45,18 @@ type ModalType = "exchange" | "transfer" | null;
   imports: [CommonModule, RouterLink, FormsModule, BaseChartDirective],
   template: `
     <div class="page-container">
-      <!-- Breadcrumb -->
-      <nav class="breadcrumb">
-        <a routerLink="/accounts">Accounts</a>
-        <span class="sep">›</span>
-        <span>{{ account()?.accountNumber || "…" }}</span>
-      </nav>
+      <a routerLink="/accounts" class="btn btn-ghost btn-sm back-link">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M10 4l-4 4 4 4"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        Back to Accounts
+      </a>
 
       <!-- Loading — only when no cached data to show yet -->
       @if (loading() && !account()) {
@@ -419,23 +425,8 @@ type ModalType = "exchange" | "transfer" | null;
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
     `
-      .breadcrumb {
-        display: flex;
-        align-items: center;
-        gap: 8px;
+      .back-link {
         margin-bottom: 20px;
-        font-size: 13px;
-        color: var(--ink-muted);
-      }
-      .breadcrumb a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      .breadcrumb a:hover {
-        text-decoration: underline;
-      }
-      .sep {
-        color: var(--border);
       }
 
       .account-hero {

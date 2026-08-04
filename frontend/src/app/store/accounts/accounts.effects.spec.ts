@@ -152,7 +152,7 @@ describe('AccountsEffects', () => {
 
   describe('resyncOnFailure$', () => {
     it('dispatches refreshAccounts with the current user id after createAccountFailure', (done) => {
-      authService.getUser.mockReturnValue({ userId: '1', username: 'alice' });
+      authService.getUser.mockReturnValue({ userId: '1', username: 'alice', admin: false });
       actions$ = of(AccountsActions.createAccountFailure({ error: 'Could not create account.' }));
 
       effects.resyncOnFailure$.subscribe((action) => {

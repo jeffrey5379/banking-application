@@ -58,6 +58,19 @@ spring:
                 key-resolver: "#{@ipKeyResolver}"
                 redis-rate-limiter.replenishRate: ${RATE_GENERAL_REPLENISH:5}
                 redis-rate-limiter.burstCapacity: ${RATE_GENERAL_BURST:20}
+        # Must be listed before both admin (below) and core-banking (its /api/** would otherwise
+        # swallow this too) - the admin console's "send message" action, gated to ROLE_ADMIN by
+        # notification-service's own SecurityConfig, not by anything here.
+        - id: admin-messages
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/admin/messages/**
+        # The rest of the admin console (user list, active toggle, KYC detail) - identity-service's
+        # own @PreAuthorize("hasRole('ADMIN')") is what actually gates this, same as above.
+        - id: admin
+          uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/admin/**
         # No RequestRateLimiter here: it's a token-bucket model built for discrete requests, not a
         # single long-lived SSE connection - and this route must be listed before the core-banking
         # catch-all below, same ordering reasoning as identity-login/identity-auth above.

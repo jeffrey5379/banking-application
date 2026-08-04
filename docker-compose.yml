@@ -85,6 +85,10 @@ services:
     environment:
       REDIS_HOST: redis
       KYC_STORAGE_ENDPOINT: http://minio:9000
+      # The browser (outside this Docker network) uploads directly to this presigned URL, so it
+      # needs a host the browser can actually resolve - unlike KYC_STORAGE_ENDPOINT above, which
+      # is only ever used by this container's own S3Client calls (headObject, bucket setup).
+      KYC_STORAGE_PRESIGN_ENDPOINT: http://localhost:9000
       KYC_STORAGE_ALLOWED_ORIGIN: http://localhost:4200
     depends_on:
       redis:

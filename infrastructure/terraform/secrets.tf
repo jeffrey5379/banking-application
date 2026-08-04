@@ -41,47 +41,6 @@ resource "aws_secretsmanager_secret_version" "jwt_secret" {
   secret_string = local.jwt_secret_value
 }
 
-# ── Service-to-service JWT secrets ───────────────────────────────────────────
-# One per calling service (core-banking, notification-service) - distinct from each other and
-# from jwt_secret above, and from each other, so a leaked secret only lets an attacker impersonate
-# the one service it belongs to. Each is injected as SERVICE_JWT_SECRET_<NAME> only into: (a) the
-# owning service's own task (to sign with), and (b) whichever task(s) need to verify that specific
-# issuer (see ecs.tf) - never broadcast to every service the way jwt_secret is.
-
-resource "random_password" "core_banking_jwt_secret" {
-  length  = 64
-  special = false
-}
-
-resource "random_password" "notification_jwt_secret" {
-  length  = 64
-  special = false
-}
-
-resource "aws_secretsmanager_secret" "core_banking_jwt_secret" {
-  name                    = "/${var.project_name}/${var.environment}/core-banking-jwt-secret"
-  description             = "core-banking's own secret for signing X-Service-Token on internal calls"
-  recovery_window_in_days = 0
-  tags                    = { Name = "${local.name_prefix}-secret-core-banking-jwt" }
-}
-
-resource "aws_secretsmanager_secret_version" "core_banking_jwt_secret" {
-  secret_id     = aws_secretsmanager_secret.core_banking_jwt_secret.id
-  secret_string = random_password.core_banking_jwt_secret.result
-}
-
-resource "aws_secretsmanager_secret" "notification_jwt_secret" {
-  name                    = "/${var.project_name}/${var.environment}/notification-jwt-secret"
-  description             = "notification-service's own secret for signing X-Service-Token on internal calls"
-  recovery_window_in_days = 0
-  tags                    = { Name = "${local.name_prefix}-secret-notification-jwt" }
-}
-
-resource "aws_secretsmanager_secret_version" "notification_jwt_secret" {
-  secret_id     = aws_secretsmanager_secret.notification_jwt_secret.id
-  secret_string = random_password.notification_jwt_secret.result
-}
-
 # ── Redis AUTH token ──────────────────────────────────────────────────────────
 # Shared by all four services (see redis.tf) - each connects with this same token, since
 # Redis AUTH (unlike the per-service JWT secrets above) has no concept of per-caller

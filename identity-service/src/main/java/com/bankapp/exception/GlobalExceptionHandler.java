@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -46,9 +47,14 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(401, "Unauthorized", "Invalid username or password", LocalDateTime.now()));
     }
 
-    // Covers DisabledException/LockedException/etc. Same message as bad credentials so a
-    // disabled account (e.g. the internal "bank" seed account) can't be distinguished from a
-    // plain wrong-password attempt.
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<ErrorResponse> handleDisabledAccount(DisabledException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse(401, "Unauthorized",
+                        "This account has been deactivated. Please contact support for details.",
+                        LocalDateTime.now()));
+    }
+
     @ExceptionHandler(AccountStatusException.class)
     public ResponseEntity<ErrorResponse> handleAccountStatus(AccountStatusException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

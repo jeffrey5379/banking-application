@@ -100,7 +100,7 @@ class KycServiceTest {
     // ── submitIdentity ───────────────────────────────────────────────────────
 
     @Test
-    void submitIdentity_validDetails_setsPendingNotVerified() {
+    void submitIdentity_validDetailsButNoDocumentsYet_staysNotStarted() {
         KycProfile profile = freshProfile();
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
         when(kycProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
@@ -108,7 +108,7 @@ class KycServiceTest {
         KycStatusResponse result = kycService.submitIdentity("alice",
                 new SubmitIdentityRequest("Alice", "Anderson", IssuingCountry.UNITED_KINGDOM, "AA1234567"));
 
-        assertThat(result.status()).isEqualTo(KycStatus.PENDING);
+        assertThat(result.status()).isEqualTo(KycStatus.NOT_STARTED);
         assertThat(result.level()).isEqualTo(KycLevel.NONE);
         assertThat(result.firstName()).isEqualTo("Alice");
         assertThat(result.lastName()).isEqualTo("Anderson");
@@ -117,10 +117,12 @@ class KycServiceTest {
     }
 
     @Test
-    void submitIdentity_rejectedProfileResubmits_clearsRejectionReasonAndReturnsToPending() {
+    void submitIdentity_rejectedProfileWithBothDocumentsResubmits_clearsRejectionReasonAndReturnsToPending() {
         KycProfile profile = freshProfile();
         profile.setStatus(KycStatus.REJECTED);
         profile.setRejectionReason("Details did not match");
+        profile.getDocuments().add(uploadedDocument(profile, DocumentType.ID_DOCUMENT));
+        profile.getDocuments().add(uploadedDocument(profile, DocumentType.SELFIE));
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
         when(kycProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
 
@@ -132,7 +134,25 @@ class KycServiceTest {
     }
 
     @Test
-    void submitIdentity_bothDocumentsAlreadyUploaded_autoVerifiesToBasic() {
+    void submitIdentity_rejectedProfileMissingADocument_staysRejectedUntilComplete() {
+        KycProfile profile = freshProfile();
+        profile.setStatus(KycStatus.REJECTED);
+        profile.setRejectionReason("Document photo was blurry");
+        profile.getDocuments().add(uploadedDocument(profile, DocumentType.SELFIE));
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
+        when(kycProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));
+
+        KycStatusResponse result = kycService.submitIdentity("alice",
+                new SubmitIdentityRequest("Alice", "Anderson", IssuingCountry.UNITED_KINGDOM, "AA1234567"));
+
+        assertThat(result.status()).isEqualTo(KycStatus.REJECTED);
+        assertThat(result.rejectionReason()).isEqualTo("Document photo was blurry");
+    }
+
+    @Test
+    void submitIdentity_bothDocumentsAlreadyUploaded_movesToPendingNotVerified() {
+        // Real end-user flow never auto-verifies, no matter how complete the profile looks -
+        // there is currently no path from PENDING to VERIFIED in this service.
         KycProfile profile = freshProfile();
         profile.getDocuments().add(uploadedDocument(profile, DocumentType.ID_DOCUMENT));
         profile.getDocuments().add(uploadedDocument(profile, DocumentType.SELFIE));
@@ -142,9 +162,9 @@ class KycServiceTest {
         KycStatusResponse result = kycService.submitIdentity("alice",
                 new SubmitIdentityRequest("Alice", "Anderson", IssuingCountry.UNITED_KINGDOM, "AA1234567"));
 
-        assertThat(result.status()).isEqualTo(KycStatus.VERIFIED);
-        assertThat(result.level()).isEqualTo(KycLevel.BASIC);
-        assertThat(result.reviewedAt()).isNotNull();
+        assertThat(result.status()).isEqualTo(KycStatus.PENDING);
+        assertThat(result.level()).isEqualTo(KycLevel.NONE);
+        assertThat(result.reviewedAt()).isNull();
     }
 
     // ── requestUploadUrl ─────────────────────────────────────────────────────
@@ -242,7 +262,52 @@ class KycServiceTest {
     }
 
     @Test
-    void completeUpload_secondOfTwoRequiredDocuments_autoVerifiesToBasic() {
+    void completeUpload_firstOfTwoRequiredDocuments_staysNotStarted() {
+        KycProfile profile = freshProfile();
+        profile.setFirstName("Alice");
+        profile.setLastName("Anderson");
+        profile.setIssuingCountry(IssuingCountry.UNITED_KINGDOM);
+        profile.setDocumentNumber("AA1234567");
+
+        KycDocument idDocument = new KycDocument();
+        idDocument.setKycProfile(profile);
+        idDocument.setType(DocumentType.ID_DOCUMENT);
+        idDocument.setStorageKey("kyc/alice/id");
+        profile.getDocuments().add(idDocument);
+
+        when(kycDocumentRepository.findByPublicId(idDocument.getPublicId())).thenReturn(Optional.of(idDocument));
+
+        KycStatusResponse result = kycService.completeUpload("alice", idDocument.getPublicId());
+
+        assertThat(idDocument.isUploaded()).isTrue();
+        assertThat(result.status()).isEqualTo(KycStatus.NOT_STARTED);
+    }
+
+    @Test
+    void completeUpload_lastRequiredDocumentWithIdentityAlreadySubmitted_movesToPending() {
+        KycProfile profile = freshProfile();
+        profile.setFirstName("Alice");
+        profile.setLastName("Anderson");
+        profile.setIssuingCountry(IssuingCountry.UNITED_KINGDOM);
+        profile.setDocumentNumber("AA1234567");
+        profile.getDocuments().add(uploadedDocument(profile, DocumentType.ID_DOCUMENT));
+
+        KycDocument selfie = new KycDocument();
+        selfie.setKycProfile(profile);
+        selfie.setType(DocumentType.SELFIE);
+        selfie.setStorageKey("kyc/alice/selfie");
+        profile.getDocuments().add(selfie);
+
+        when(kycDocumentRepository.findByPublicId(selfie.getPublicId())).thenReturn(Optional.of(selfie));
+
+        KycStatusResponse result = kycService.completeUpload("alice", selfie.getPublicId());
+
+        assertThat(selfie.isUploaded()).isTrue();
+        assertThat(result.status()).isEqualTo(KycStatus.PENDING);
+    }
+
+    @Test
+    void completeUpload_secondOfTwoRequiredDocuments_staysPendingNotAutoVerified() {
         KycProfile profile = freshProfile();
         profile.setFirstName("Alice");
         profile.setStatus(KycStatus.PENDING);
@@ -259,8 +324,8 @@ class KycServiceTest {
         KycStatusResponse result = kycService.completeUpload("alice", selfie.getPublicId());
 
         assertThat(selfie.isUploaded()).isTrue();
-        assertThat(result.status()).isEqualTo(KycStatus.VERIFIED);
-        assertThat(result.level()).isEqualTo(KycLevel.BASIC);
+        assertThat(result.status()).isEqualTo(KycStatus.PENDING);
+        assertThat(result.level()).isEqualTo(KycLevel.NONE);
     }
 
     @Test
@@ -290,6 +355,9 @@ class KycServiceTest {
     void seedCompletedDocument_marksUploadedWithoutTouchingStorage() {
         KycProfile profile = freshProfile();
         profile.setFirstName("Alice");
+        profile.setLastName("Anderson");
+        profile.setIssuingCountry(IssuingCountry.UNITED_KINGDOM);
+        profile.setDocumentNumber("AA1234567");
         profile.getDocuments().add(uploadedDocument(profile, DocumentType.SELFIE));
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
         when(kycProfileRepository.findByUserId(1L)).thenReturn(Optional.of(profile));

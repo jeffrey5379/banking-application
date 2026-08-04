@@ -14,7 +14,7 @@ import {
 // starting balances.
 test.describe("cross-user transfers", () => {
   test("recipient lookup reports found/not found as the fields are filled in", async ({ page }) => {
-    await login(page, "alice", "alice123");
+    await login(page, "alice", "0DxKRQZhD!");
     await openAccountByCurrency(page, "USD");
     await page.getByRole("button", { name: "Send", exact: true }).click();
 
@@ -29,9 +29,9 @@ test.describe("cross-user transfers", () => {
   });
 
   test("alice sends USD to carol and both balances update end to end", async ({ page }) => {
-    const carol = await snapshotAccount(page, "carol", "carol123", "USD");
+    const carol = await snapshotAccount(page, "carol", "$E3ltbJg^b", "USD");
 
-    await login(page, "alice", "alice123");
+    await login(page, "alice", "0DxKRQZhD!");
     await openAccountByCurrency(page, "USD");
     const aliceBalanceBefore = await getHeroBalance(page);
 
@@ -56,7 +56,7 @@ test.describe("cross-user transfers", () => {
     await expect(firstRow).toContainText("100.00");
 
     await logout(page);
-    await login(page, "carol", "carol123");
+    await login(page, "carol", "$E3ltbJg^b");
     await openAccountByCurrency(page, "USD");
     await expect.poll(() => getHeroBalance(page)).toBeCloseTo(carol.balance + 100, 2);
   });
@@ -65,9 +65,9 @@ test.describe("cross-user transfers", () => {
     // Seeded per backend/wiremock/mappings/debit-eligibility.json: bob's account ids are
     // denied outright (unlike alice's, which are allowed), so any send from bob must fail
     // closed with this exact server-side message - see AccountService.transferInternal.
-    const carol = await snapshotAccount(page, "carol", "carol123", "USD");
+    const carol = await snapshotAccount(page, "carol", "$E3ltbJg^b", "USD");
 
-    await login(page, "bob", "bob123");
+    await login(page, "bob", "jh02EZ3DH#");
     await openAccountByCurrency(page, "EUR");
     const bobBalanceBefore = await getHeroBalance(page);
     const bobAccountNumber = await getAccountNumber(page);
@@ -92,7 +92,7 @@ test.describe("cross-user transfers", () => {
     expect(await getAccountNumber(page)).toBe(bobAccountNumber);
 
     await logout(page);
-    await login(page, "carol", "carol123");
+    await login(page, "carol", "$E3ltbJg^b");
     await openAccountByCurrency(page, "USD");
     expect(await getHeroBalance(page)).toBe(carol.balance);
   });

@@ -11,7 +11,6 @@ import com.bankapp.repository.AccountRepository;
 import com.bankapp.repository.ExchangeRateRepository;
 import com.bankapp.repository.OperationRepository;
 import com.bankapp.security.JwtPrincipal;
-import com.bankapp.security.service.InternalServiceTokenIssuer;
 import com.bankapp.service.AccountService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,17 +43,14 @@ public class DataSeeder implements CommandLineRunner {
     private final OperationRepository operationRepository;
     private final ExchangeRateRepository exchangeRateRepository;
     private final RestClient identityClient;
-    private final InternalServiceTokenIssuer tokenIssuer;
 
     public DataSeeder(AccountService accountService, AccountRepository accountRepository,
                       OperationRepository operationRepository, ExchangeRateRepository exchangeRateRepository,
-                      @Value("${identity.service.url}") String identityServiceUrl,
-                      InternalServiceTokenIssuer tokenIssuer) {
+                      @Value("${identity.service.url}") String identityServiceUrl) {
         this.accountService = accountService;
         this.accountRepository = accountRepository;
         this.operationRepository = operationRepository;
         this.exchangeRateRepository = exchangeRateRepository;
-        this.tokenIssuer = tokenIssuer;
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(2));
@@ -259,7 +255,6 @@ public class DataSeeder implements CommandLineRunner {
     private UUID setCurrentUser(String username) {
         InternalUserResponse user = identityClient.get()
                 .uri("/internal/users/{username}", username)
-                .header("X-Service-Token", tokenIssuer.mintToken())
                 .retrieve()
                 .body(InternalUserResponse.class);
         if (user == null) {

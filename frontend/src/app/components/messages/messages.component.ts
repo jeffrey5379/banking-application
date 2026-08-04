@@ -10,7 +10,18 @@ import { MessagesService } from "../../services/messages.service";
   imports: [CommonModule, RouterLink],
   template: `
     <div class="page-container">
-      <a routerLink="/" class="btn btn-ghost btn-sm back-link">← Back</a>
+      <a routerLink="/" class="btn btn-ghost btn-sm back-link">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path
+            d="M10 4l-4 4 4 4"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        Back
+      </a>
 
       <div class="page-header">
         <h1>Messages</h1>
@@ -68,8 +79,8 @@ import { MessagesService } from "../../services/messages.service";
 
       <!-- Message detail modal -->
       @if (selectedMessage(); as message) {
-        <div class="modal-overlay" (click)="closeMessage()">
-          <div class="modal" style="max-width:520px" (click)="$event.stopPropagation()">
+        <div class="modal-overlay">
+          <div class="modal" style="max-width:520px">
             <div class="modal-header">
               <h3>{{ message.subject }}</h3>
               <button class="modal-close" (click)="closeMessage()">×</button>

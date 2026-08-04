@@ -3,7 +3,6 @@ package com.bankapp.notification.config;
 import com.bankapp.notification.model.MessageDocument;
 import com.bankapp.notification.model.MessagePriority;
 import com.bankapp.notification.repository.MessageRepository;
-import com.bankapp.notification.security.service.InternalServiceTokenIssuer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -23,15 +22,12 @@ public class MessageSeeder implements CommandLineRunner {
 
     private final MessageRepository messageRepository;
     private final WebClient identityClient;
-    private final InternalServiceTokenIssuer tokenIssuer;
 
     public MessageSeeder(MessageRepository messageRepository,
                           WebClient.Builder webClientBuilder,
-                          @Value("${identity.service.url}") String identityServiceUrl,
-                          InternalServiceTokenIssuer tokenIssuer) {
+                          @Value("${identity.service.url}") String identityServiceUrl) {
         this.messageRepository = messageRepository;
         this.identityClient = webClientBuilder.baseUrl(identityServiceUrl).build();
-        this.tokenIssuer = tokenIssuer;
     }
 
     @Override
@@ -68,7 +64,6 @@ public class MessageSeeder implements CommandLineRunner {
     private UUID resolveUserId(String username) {
         InternalUserResponse user = identityClient.get()
                 .uri("/internal/users/{username}", username)
-                .header("X-Service-Token", tokenIssuer.mintToken())
                 .retrieve()
                 .bodyToMono(InternalUserResponse.class)
                 .block();

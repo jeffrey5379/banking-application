@@ -146,8 +146,8 @@ import {
 
       <!-- Add Account Modal -->
       @if (showAddAccount) {
-        <div class="modal-overlay" (click)="onOverlayClick($event)">
-          <div class="modal" (click)="$event.stopPropagation()">
+        <div class="modal-overlay">
+          <div class="modal">
             <div class="modal-header">
               <h3>Open New Account</h3>
               <button class="modal-close" (click)="showAddAccount = false">
@@ -385,10 +385,6 @@ export class AccountsComponent implements OnInit {
         idempotencyKey: this.createAccountIdempotencyKey,
       }),
     );
-  }
-
-  onOverlayClick(_event: MouseEvent) {
-    this.showAddAccount = false;
   }
 
   formatAmount(amount: number): string {

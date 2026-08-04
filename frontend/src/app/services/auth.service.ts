@@ -42,14 +42,22 @@ export class AuthService {
     return sessionStorage.getItem(this.TOKEN_KEY);
   }
 
-  getUser(): { userId: string; username: string } | null {
+  getUser(): { userId: string; username: string; admin: boolean } | null {
     const raw = sessionStorage.getItem(this.USER_KEY);
     return raw ? JSON.parse(raw) : null;
   }
 
+  // Backed by the JWT's real "role" claim
+  isAdmin(): boolean {
+    return this.getUser()?.admin ?? false;
+  }
+
   private saveSession(res: AuthResponse): void {
     sessionStorage.setItem(this.TOKEN_KEY, res.token);
-    sessionStorage.setItem(this.USER_KEY, JSON.stringify({ userId: res.userId, username: res.username }));
+    sessionStorage.setItem(
+      this.USER_KEY,
+      JSON.stringify({ userId: res.userId, username: res.username, admin: res.admin }),
+    );
   }
 
   clearSession(): void {

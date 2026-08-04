@@ -86,9 +86,6 @@ resource "aws_ecs_task_definition" "identity" {
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
       { name = "MAIL_USERNAME", valueFrom = aws_secretsmanager_secret.mail_username.arn },
       { name = "MAIL_PASSWORD", valueFrom = aws_secretsmanager_secret.mail_password.arn },
-      # Verifies X-Service-Token on /internal/** from both callers - see ServiceTokenKeyLocator.
-      { name = "SERVICE_JWT_SECRET_CORE_BANKING", valueFrom = aws_secretsmanager_secret.core_banking_jwt_secret.arn },
-      { name = "SERVICE_JWT_SECRET_NOTIFICATION", valueFrom = aws_secretsmanager_secret.notification_jwt_secret.arn },
       { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 
@@ -201,7 +198,6 @@ resource "aws_ecs_task_definition" "core_banking" {
     secrets = [
       { name = "DB_PASSWORD", valueFrom = aws_secretsmanager_secret.db_password["core-banking"].arn },
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
-      { name = "SERVICE_JWT_SECRET_CORE_BANKING", valueFrom = aws_secretsmanager_secret.core_banking_jwt_secret.arn },
       { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 
@@ -398,8 +394,6 @@ resource "aws_ecs_task_definition" "notification" {
     secrets = [
       { name = "JWT_SECRET", valueFrom = aws_secretsmanager_secret.jwt_secret.arn },
       { name = "MONGO_URI", valueFrom = aws_secretsmanager_secret.mongo_uri.arn },
-      { name = "SERVICE_JWT_SECRET_NOTIFICATION", valueFrom = aws_secretsmanager_secret.notification_jwt_secret.arn },
-      { name = "SERVICE_JWT_SECRET_CORE_BANKING", valueFrom = aws_secretsmanager_secret.core_banking_jwt_secret.arn },
       { name = "REDIS_PASSWORD", valueFrom = aws_secretsmanager_secret.redis_auth_token.arn },
     ]
 

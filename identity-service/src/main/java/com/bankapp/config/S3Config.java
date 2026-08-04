@@ -14,16 +14,17 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.net.URI;
 
-// Builds the S3 client/presigner used to store KYC document/selfie uploads. Locally this points
-// at MinIO (path-style addressing, static test credentials); in prod it points at real AWS S3
-// with no endpoint override and the default credentials chain (the running task's IAM role) -
-// see application.properties / application-prod.properties. The KycService/KycController code
-// that uses these beans is identical either way.
+// Builds the S3 client/presigner used to store KYC document/selfie uploads
 @Configuration
 public class S3Config {
 
     @Value("${kyc.storage.endpoint:}")
     private String endpoint;
+
+    // Separate from `endpoint` on purpose: this one is baked into presigned URLs handed to the
+    // browser, which runs outside the backend's own network
+    @Value("${kyc.storage.presign-endpoint:${kyc.storage.endpoint:}}")
+    private String presignEndpoint;
 
     @Value("${kyc.storage.region}")
     private String region;
@@ -57,8 +58,8 @@ public class S3Config {
         S3Presigner.Builder builder = S3Presigner.builder()
                 .region(Region.of(region))
                 .serviceConfiguration(s3Configuration());
-        if (!endpoint.isBlank()) {
-            builder.endpointOverride(URI.create(endpoint));
+        if (!presignEndpoint.isBlank()) {
+            builder.endpointOverride(URI.create(presignEndpoint));
         }
         AwsCredentialsProvider credentials = staticCredentialsOrNull();
         if (credentials != null) {

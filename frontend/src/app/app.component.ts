@@ -62,33 +62,35 @@ import { ToastContainerComponent } from "./components/toast/toast-container.comp
           </a>
           @if (authService.isLoggedIn()) {
             <nav class="topbar-nav">
-              <p class="nav-user">
-                Glad to see you
-                <strong>{{ authService.getUser()?.username }}</strong>
-              </p>
-              <a routerLink="/messages" class="btn-icon" title="Messages" aria-label="Messages">
-                <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
-                  <rect
-                    x="2"
-                    y="4"
-                    width="16"
-                    height="12"
-                    rx="2"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                  />
-                  <path
-                    d="M3 5.5l7 5 7-5"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-                @if (messagesService.unreadCount() > 0) {
-                  <span class="unread-badge">{{ messagesService.unreadCount() }}</span>
-                }
-              </a>
+              @if (!authService.isAdmin()) {
+                <p class="nav-user">
+                  Glad to see you
+                  <strong>{{ authService.getUser()?.username }}</strong>
+                </p>
+                <a routerLink="/messages" class="btn-icon" title="Messages" aria-label="Messages">
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                    <rect
+                      x="2"
+                      y="4"
+                      width="16"
+                      height="12"
+                      rx="2"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                    />
+                    <path
+                      d="M3 5.5l7 5 7-5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  @if (messagesService.unreadCount() > 0) {
+                    <span class="unread-badge">{{ messagesService.unreadCount() }}</span>
+                  }
+                </a>
+              }
               <button class="btn-logout" (click)="logout()">Sign out</button>
             </nav>
           }

@@ -14,13 +14,13 @@ test.describe("authentication", () => {
     await page.getByPlaceholder("Enter username").fill("alice");
     await page.getByPlaceholder("Enter password").fill("wrong-password");
     await page.locator("form").getByRole("button", { name: "Sign In", exact: true }).click();
-    await expect(page.locator(".error-banner")).toHaveText("Invalid username or password.");
+    await expect(page.locator(".error-banner")).toHaveText("Invalid username or password");
     // Still on the credentials step, not silently through to the app.
     await expect(page.getByPlaceholder("Enter username")).toBeVisible();
   });
 
   test("logs in with a valid seeded user through the OTP step, then logs out", async ({ page }) => {
-    await login(page, "alice", "alice123");
+    await login(page, "alice", "0DxKRQZhD!");
 
     await expect(page.locator(".nav-user")).toContainText("alice");
 
@@ -35,7 +35,7 @@ test.describe("authentication", () => {
   test("rejects a wrong OTP code and allows going back to re-enter credentials", async ({ page }) => {
     await gotoApp(page);
     await page.getByPlaceholder("Enter username").fill("bob");
-    await page.getByPlaceholder("Enter password").fill("bob123");
+    await page.getByPlaceholder("Enter password").fill("jh02EZ3DH#");
     await page.locator("form").getByRole("button", { name: "Sign In", exact: true }).click();
 
     await page.getByPlaceholder("6-digit code").fill("000000");
@@ -43,7 +43,7 @@ test.describe("authentication", () => {
     await expect(page.locator(".error-banner")).toBeVisible();
     await expect(page.getByPlaceholder("6-digit code")).toBeVisible();
 
-    await page.getByRole("button", { name: "← Back" }).click();
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByPlaceholder("Enter username")).toBeVisible();
   });
 
@@ -54,7 +54,8 @@ test.describe("authentication", () => {
     await page.getByRole("button", { name: "Register", exact: true }).click();
     await page.getByPlaceholder("Choose a username").fill(username);
     await page.getByPlaceholder("your@email.com").fill(`${username}@example.com`);
-    await page.getByPlaceholder("Choose a password").fill("Password1");
+    await page.getByPlaceholder("Choose a password").fill("Password1!");
+    await page.getByPlaceholder("Re-enter your password").fill("Password1!");
     await page.getByRole("button", { name: "Create Account", exact: true }).click();
 
     await page.getByPlaceholder("6-digit code").fill(OTP_CODE);

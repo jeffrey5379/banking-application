@@ -1,15 +1,14 @@
 package com.bankapp.notification.security;
 
 import org.springframework.security.authentication.AbstractAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import java.util.List;
 import java.util.UUID;
 
 // Pre-auth: wraps the raw bearer token (credentials), principal unset.
-// Post-auth: wraps the token's uid claim as the principal - this service never needs anything
-// else off the token (no username, no DB-backed UserDetails, unlike backend/identity-service).
+// Post-auth: wraps the token's uid claim as the principal
+// and its role claim as the sole granted authority
 public class JwtAuthenticationToken extends AbstractAuthenticationToken {
 
     private final String token;
@@ -22,8 +21,8 @@ public class JwtAuthenticationToken extends AbstractAuthenticationToken {
         setAuthenticated(false);
     }
 
-    public JwtAuthenticationToken(UUID userId, String token) {
-        super(List.of(new SimpleGrantedAuthority("ROLE_USER")));
+    public JwtAuthenticationToken(UUID userId, String token, String role) {
+        super(List.of(new SimpleGrantedAuthority(role)));
         this.token = token;
         this.userId = userId;
         setAuthenticated(true);

@@ -10,6 +10,7 @@ import { FormsModule, NgForm } from "@angular/forms";
 import { Router } from "@angular/router";
 import { map, switchMap } from "rxjs";
 import { KycService } from "../../services/kyc.service";
+import { CameraCaptureComponent } from "../camera-capture/camera-capture.component";
 import {
   IssuingCountry,
   KycDocumentType,
@@ -41,7 +42,7 @@ const COUNTRY_OPTIONS: CountryOption[] = [
 @Component({
   selector: "app-kyc",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CameraCaptureComponent],
   template: `
     <div class="page-container">
       <div class="page-header">
@@ -77,6 +78,24 @@ const COUNTRY_OPTIONS: CountryOption[] = [
             >
               Go to Accounts
             </button>
+          }
+          @if (status()!.status === "PENDING") {
+            <p class="text-muted text-sm" style="margin-top:8px">
+              Your submission is being reviewed. This can take a little while -
+              check back later.
+            </p>
+          }
+          @if (status()!.status === "NOT_STARTED" && hasSubmittedIdentity()) {
+            <p class="text-muted text-sm" style="margin-top:8px">
+              Your details are saved. Upload your ID document and a selfie to
+              submit your verification for review.
+            </p>
+          }
+          @if (status()!.status === "REJECTED" && status()!.rejectionReason) {
+            <div class="error-banner" style="margin-top:12px">
+              Your previous submission was rejected: {{ status()!.rejectionReason }}.
+              Please fix the issue and resubmit below.
+            </div>
           }
         </div>
       }
@@ -195,7 +214,16 @@ const COUNTRY_OPTIONS: CountryOption[] = [
                 type="button"
                 (click)="goToAccounts()"
               >
-                ← Back
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M10 4l-4 4 4 4"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Back
               </button>
               <button
                 class="btn btn-primary"
@@ -220,63 +248,81 @@ const COUNTRY_OPTIONS: CountryOption[] = [
         <div class="card identity-form-card" style="margin-top:16px">
           <h3 style="margin-top:0">Upload documents</h3>
           <p class="text-muted text-sm" style="margin-top:4px">
-            Upload a clear photo of your ID document and a selfie to complete
-            verification.
+            @if (isRejected()) {
+              Re-upload a clear photo of your ID document and a selfie, then our
+              team will review your submission again.
+            } @else {
+              Upload a clear photo of your ID document and a selfie. Our team
+              will review your submission once both are in.
+            }
           </p>
 
-          <div class="upload-item">
-            <label class="form-label">ID document photo</label>
-            <div class="upload-row">
-              <label
-                class="btn btn-ghost btn-sm file-upload-btn"
-                [class.file-upload-btn-disabled]="
-                  isUploaded('ID_DOCUMENT') || uploadingType() !== null
-                "
-              >
-                Choose File
-                <input
-                  type="file"
-                  accept="image/*"
-                  class="file-input-hidden"
-                  (change)="onFileSelected($event, 'ID_DOCUMENT')"
-                  [disabled]="
-                    isUploaded('ID_DOCUMENT') || uploadingType() !== null
-                  "
-                />
-              </label>
+          <div class="step-indicator">
+            <span
+              class="step-dot"
+              [class.step-dot-active]="uploadStep() === 'ID_DOCUMENT'"
+              [class.step-dot-done]="isUploaded('ID_DOCUMENT')"
+              >1</span
+            >
+            <span class="step-label">ID document</span>
+            <span class="step-divider"></span>
+            <span
+              class="step-dot"
+              [class.step-dot-active]="uploadStep() === 'SELFIE'"
+              [class.step-dot-done]="isUploaded('SELFIE')"
+              >2</span
+            >
+            <span class="step-label">Selfie</span>
+          </div>
+
+          @if (uploadStep() === "ID_DOCUMENT") {
+            <div class="upload-item">
+              <label class="form-label">ID document photo</label>
+              <p class="text-muted text-sm" style="margin-top:0">
+                Frame the whole document so all four corners are visible, and
+                make sure the text is sharp and free of glare.
+              </p>
+              <app-camera-capture
+                facingMode="environment"
+                fileName="id-document.jpg"
+                [disabled]="(isUploaded('ID_DOCUMENT') && !isRejected()) || uploadingType() !== null"
+                (photoCaptured)="onPhotoCaptured($event, 'ID_DOCUMENT')"
+              />
               @if (isUploaded("ID_DOCUMENT")) {
                 <span class="field-hint field-hint-success">Uploaded</span>
               } @else if (uploadingType() === "ID_DOCUMENT") {
                 <span class="field-hint">Uploading…</span>
               }
             </div>
-          </div>
+          }
 
-          <div class="upload-item">
-            <label class="form-label">Selfie</label>
-            <div class="upload-row">
-              <label
-                class="btn btn-ghost btn-sm file-upload-btn"
-                [class.file-upload-btn-disabled]="
-                  isUploaded('SELFIE') || uploadingType() !== null
-                "
-              >
-                Choose File
-                <input
-                  type="file"
-                  accept="image/*"
-                  class="file-input-hidden"
-                  (change)="onFileSelected($event, 'SELFIE')"
-                  [disabled]="isUploaded('SELFIE') || uploadingType() !== null"
-                />
-              </label>
+          @if (uploadStep() === "SELFIE") {
+            <div class="upload-item">
+              <label class="form-label">Selfie</label>
+              <p class="text-muted text-sm" style="margin-top:0">
+                Look directly at the camera in good lighting, with your whole
+                face clearly visible.
+              </p>
+              <app-camera-capture
+                facingMode="user"
+                fileName="selfie.jpg"
+                [disabled]="(isUploaded('SELFIE') && !isRejected()) || uploadingType() !== null"
+                (photoCaptured)="onPhotoCaptured($event, 'SELFIE')"
+              />
               @if (isUploaded("SELFIE")) {
                 <span class="field-hint field-hint-success">Uploaded</span>
               } @else if (uploadingType() === "SELFIE") {
                 <span class="field-hint">Uploading…</span>
               }
             </div>
-          </div>
+          }
+
+          @if (allDocumentsUploaded() && !isRejected()) {
+            <div class="success-banner" style="margin-top:12px">
+              All documents received. Our team will review your submission
+              shortly.
+            </div>
+          }
 
           @if (error()) {
             <div class="error-banner" style="margin-top:12px">
@@ -285,13 +331,59 @@ const COUNTRY_OPTIONS: CountryOption[] = [
           }
 
           <div class="form-actions" style="margin-top:16px">
-            <button
-              class="btn btn-ghost"
-              type="button"
-              (click)="goToAccounts()"
-            >
-              ← Back
-            </button>
+            @if (uploadStep() === "ID_DOCUMENT") {
+              <button
+                class="btn btn-ghost"
+                type="button"
+                (click)="goToAccounts()"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M10 4l-4 4 4 4"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Back
+              </button>
+              @if (isUploaded("ID_DOCUMENT")) {
+                <button
+                  class="btn btn-primary"
+                  type="button"
+                  (click)="goToStep('SELFIE')"
+                >
+                  Continue
+                </button>
+              }
+            } @else {
+              <button
+                class="btn btn-ghost"
+                type="button"
+                (click)="goToStep('ID_DOCUMENT')"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M10 4l-4 4 4 4"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Back
+              </button>
+              @if (allDocumentsUploaded() && !isRejected()) {
+                <button
+                  class="btn btn-primary"
+                  type="button"
+                  (click)="goToAccounts()"
+                >
+                  Finish
+                </button>
+              }
+            }
           </div>
         </div>
       }
@@ -324,32 +416,41 @@ const COUNTRY_OPTIONS: CountryOption[] = [
       .upload-item {
         margin-bottom: 16px;
       }
-      .upload-row {
+      .step-indicator {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
+        margin: 16px 0;
       }
-      .file-upload-btn {
-        position: relative;
+      .step-dot {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--surface-inset);
+        color: var(--ink-muted);
+        font-size: 12px;
+        font-weight: 600;
+        flex-shrink: 0;
       }
-      .file-upload-btn-disabled {
-        opacity: 0.5;
-        cursor: default;
+      .step-dot-active {
+        background: var(--accent);
+        color: white;
       }
-      .file-upload-btn-disabled:hover {
-        background: transparent;
-        border-color: var(--border);
+      .step-dot-done {
+        background: var(--success);
+        color: #fff;
       }
-      .file-input-hidden {
-        position: absolute;
-        width: 1px;
+      .step-label {
+        font-size: 13px;
+        color: var(--ink-muted);
+      }
+      .step-divider {
+        width: 24px;
         height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
+        background: var(--border-subtle);
       }
       .field-hint-slot {
         display: block;
@@ -366,6 +467,14 @@ const COUNTRY_OPTIONS: CountryOption[] = [
       }
       .field-hint-success {
         color: var(--success);
+      }
+      .success-banner {
+        padding: 12px 16px;
+        background: var(--success-light);
+        border: 1px solid var(--success);
+        border-radius: var(--radius-sm);
+        color: var(--success);
+        font-size: 13px;
       }
       .input-invalid {
         border-color: var(--danger) !important;
@@ -399,6 +508,7 @@ export class KycComponent implements OnInit {
   loadingStatus = signal(true);
   submitting = signal(false);
   uploadingType = signal<KycDocumentType | null>(null);
+  uploadStep = signal<KycDocumentType>("ID_DOCUMENT");
   error = signal("");
 
   firstName = "";
@@ -410,6 +520,7 @@ export class KycComponent implements OnInit {
     this.kycService.getStatus().subscribe({
       next: (res) => {
         this.status.set(res);
+        this.syncUploadStep();
         this.loadingStatus.set(false);
       },
       error: () => {
@@ -433,6 +544,7 @@ export class KycComponent implements OnInit {
       .subscribe({
         next: (res) => {
           this.status.set(res);
+          this.syncUploadStep();
           this.submitting.set(false);
         },
         error: (err) => {
@@ -444,11 +556,7 @@ export class KycComponent implements OnInit {
       });
   }
 
-  onFileSelected(event: Event, type: KycDocumentType) {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-
+  onPhotoCaptured(file: File, type: KycDocumentType) {
     this.uploadingType.set(type);
     this.error.set("");
 
@@ -465,21 +573,38 @@ export class KycComponent implements OnInit {
       .subscribe({
         next: (res) => {
           this.status.set(res);
+          this.syncUploadStep();
           this.uploadingType.set(null);
-          input.value = "";
         },
         error: (err) => {
           this.error.set(
             err.error?.message || "Upload failed. Please try again.",
           );
           this.uploadingType.set(null);
-          input.value = "";
         },
       });
   }
 
+  goToStep(step: KycDocumentType) {
+    this.uploadStep.set(step);
+  }
+
+  // Lands the user on the first step that still needs a photo - or, once both are uploaded and
+  // not under rejection, the last step (selfie) so the "Finish" action is in view.
+  private syncUploadStep() {
+    this.uploadStep.set(
+      this.isUploaded("ID_DOCUMENT") && !this.isRejected()
+        ? "SELFIE"
+        : "ID_DOCUMENT",
+    );
+  }
+
   hasSubmittedIdentity(): boolean {
     return !!this.status()?.firstName;
+  }
+
+  isRejected(): boolean {
+    return this.status()?.status === "REJECTED";
   }
 
   isUploaded(type: KycDocumentType): boolean {
@@ -487,6 +612,10 @@ export class KycComponent implements OnInit {
       this.status()?.documents.some((d) => d.type === type && d.uploaded) ??
       false
     );
+  }
+
+  allDocumentsUploaded(): boolean {
+    return this.isUploaded("ID_DOCUMENT") && this.isUploaded("SELFIE");
   }
 
   statusLabel(): string {
@@ -498,7 +627,7 @@ export class KycComponent implements OnInit {
       case "REJECTED":
         return "Rejected";
       default:
-        return "Not started";
+        return this.hasSubmittedIdentity() ? "In progress" : "Not started";
     }
   }
 
@@ -511,7 +640,7 @@ export class KycComponent implements OnInit {
       case "REJECTED":
         return "badge-danger";
       default:
-        return "badge-muted";
+        return this.hasSubmittedIdentity() ? "badge-warning" : "badge-muted";
     }
   }
 

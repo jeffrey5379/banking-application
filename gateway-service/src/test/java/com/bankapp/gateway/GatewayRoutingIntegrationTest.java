@@ -38,8 +38,10 @@ class GatewayRoutingIntegrationTest {
 
     private static final List<String> identityRequests = new CopyOnWriteArrayList<>();
     private static final List<String> coreBankingRequests = new CopyOnWriteArrayList<>();
+    private static final List<String> notificationRequests = new CopyOnWriteArrayList<>();
     private static final HttpServer identityServer;
     private static final HttpServer coreBankingServer;
+    private static final HttpServer notificationServer;
 
     // Static initializer (not @BeforeAll) so both stub servers are guaranteed up before
     // @DynamicPropertySource resolves - that method is invoked while the ApplicationContext is
@@ -48,6 +50,7 @@ class GatewayRoutingIntegrationTest {
         try {
             identityServer = stubServer("identity-ok", identityRequests);
             coreBankingServer = stubServer("core-banking-ok", coreBankingRequests);
+            notificationServer = stubServer("notification-ok", notificationRequests);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -57,6 +60,7 @@ class GatewayRoutingIntegrationTest {
     static void overrideProperties(DynamicPropertyRegistry registry) {
         registry.add("IDENTITY_SERVICE_URL", () -> "http://127.0.0.1:" + identityServer.getAddress().getPort());
         registry.add("CORE_BANKING_SERVICE_URL", () -> "http://127.0.0.1:" + coreBankingServer.getAddress().getPort());
+        registry.add("NOTIFICATION_SERVICE_URL", () -> "http://127.0.0.1:" + notificationServer.getAddress().getPort());
         registry.add("REDIS_HOST", () -> "127.0.0.1");
         registry.add("REDIS_PORT", () -> "1");
     }
@@ -65,6 +69,7 @@ class GatewayRoutingIntegrationTest {
     static void stopUpstreams() {
         identityServer.stop(0);
         coreBankingServer.stop(0);
+        notificationServer.stop(0);
     }
 
     @LocalServerPort
@@ -76,6 +81,7 @@ class GatewayRoutingIntegrationTest {
     void setUp() {
         identityRequests.clear();
         coreBankingRequests.clear();
+        notificationRequests.clear();
         client = WebTestClient.bindToServer()
                 .baseUrl("http://localhost:" + gatewayPort)
                 .responseTimeout(Duration.ofSeconds(10))
@@ -123,6 +129,30 @@ class GatewayRoutingIntegrationTest {
 
         assertThat(coreBankingRequests).containsExactly("/api/accounts/123");
         assertThat(identityRequests).isEmpty();
+    }
+
+    @Test
+    void adminMessagesPath_routesToNotificationServiceNotIdentityOrCoreBanking() {
+        client.post().uri("/api/admin/messages")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo("notification-ok");
+
+        assertThat(notificationRequests).containsExactly("/api/admin/messages");
+        assertThat(identityRequests).isEmpty();
+        assertThat(coreBankingRequests).isEmpty();
+    }
+
+    @Test
+    void otherAdminPaths_routeToIdentityServiceRatherThanTheCoreBankingCatchAll() {
+        client.get().uri("/api/admin/users")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).isEqualTo("identity-ok");
+
+        assertThat(identityRequests).containsExactly("/api/admin/users");
+        assertThat(coreBankingRequests).isEmpty();
+        assertThat(notificationRequests).isEmpty();
     }
 
     @Test

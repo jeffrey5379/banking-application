@@ -1,7 +1,6 @@
 package com.bankapp.client;
 
 import com.bankapp.exception.KycNotVerifiedException;
-import com.bankapp.security.service.InternalServiceTokenIssuer;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -15,9 +14,8 @@ import java.util.UUID;
 public class KycStatusClient {
 
     private final RestClient restClient;
-    private final InternalServiceTokenIssuer tokenIssuer;
 
-    public KycStatusClient(@Value("${kyc.service.url}") String baseUrl, InternalServiceTokenIssuer tokenIssuer) {
+    public KycStatusClient(@Value("${kyc.service.url}") String baseUrl) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(2));
         factory.setReadTimeout(Duration.ofSeconds(3));
@@ -26,14 +24,12 @@ public class KycStatusClient {
                 .baseUrl(baseUrl)
                 .requestFactory(factory)
                 .build();
-        this.tokenIssuer = tokenIssuer;
     }
 
     @CircuitBreaker(name = "kycStatus", fallbackMethod = "fallback")
     public void requireVerified(UUID userId) {
         EligibilityResponse response = restClient.get()
                 .uri("/internal/kyc/{userId}/eligibility", userId)
-                .header("X-Service-Token", tokenIssuer.mintToken())
                 .retrieve()
                 .body(EligibilityResponse.class);
         if (response == null || !"VERIFIED".equals(response.status())) {

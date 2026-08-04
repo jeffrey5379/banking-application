@@ -1,6 +1,7 @@
 package com.bankapp.config;
 
 import com.bankapp.dto.KycDtos.SubmitIdentityRequest;
+import com.bankapp.model.Role;
 import com.bankapp.model.User;
 import com.bankapp.model.kyc.DocumentType;
 import com.bankapp.model.kyc.IssuingCountry;
@@ -22,11 +23,13 @@ public class DataSeeder implements CommandLineRunner {
 
     // The "bank" account is a real, fully modelled user (core-banking transfers real money out
     // of its account) but login for it is disabled - see UserService/GlobalExceptionHandler.
+    // "admin" is the one seeded Role.ADMIN account
     private static final List<String[]> SEED_USERS = List.of(
-            new String[]{"alice", "alice@example.com", "alice123"},
-            new String[]{"bob", "bob@example.com", "bob123"},
-            new String[]{"carol", "carol@example.com", "carol123"},
-            new String[]{"bank", "bank@example.com", "bank-internal-seed"}
+            new String[]{"alice", "alice@example.com", "0DxKRQZhD!"},
+            new String[]{"bob", "bob@example.com", "jh02EZ3DH#"},
+            new String[]{"carol", "carol@example.com", "$E3ltbJg^b"},
+            new String[]{"admin", "admin@example.com", "dIO1x$AN^z"},
+            new String[]{"bank", "bank@example.com", "fP3+v#q6Yp"}
     );
 
     // firstName, lastName, issuingCountry, documentNumber - keyed by index into SEED_USERS.
@@ -34,6 +37,7 @@ public class DataSeeder implements CommandLineRunner {
             new SubmitIdentityRequest("Alice", "Anderson", IssuingCountry.UNITED_KINGDOM, "AA1234567"),
             new SubmitIdentityRequest("Bob", "Baker", IssuingCountry.UNITED_STATES, "BB7654321"),
             new SubmitIdentityRequest("Carol", "Carter", IssuingCountry.CANADA, "CC1928374"),
+            new SubmitIdentityRequest("Ada", "Admin", IssuingCountry.GERMANY, "AD1029384"),
             new SubmitIdentityRequest("Bank", "Systems", IssuingCountry.GERMANY, "BANK0000001")
     );
 
@@ -77,8 +81,13 @@ public class DataSeeder implements CommandLineRunner {
             kycService.seedCompletedDocument(username, DocumentType.SELFIE);
         }
 
+        User admin = userRepository.findByUsername("admin").orElseThrow();
+        admin.setRole(Role.ADMIN);
+        userRepository.save(admin);
+
         User bank = userRepository.findByUsername("bank").orElseThrow();
         bank.setEnabled(false);
+        bank.setRole(Role.SYSTEM);
         userRepository.save(bank);
 
         log.info("Identity seeding complete.");
