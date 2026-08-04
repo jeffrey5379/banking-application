@@ -22,7 +22,7 @@ describe('KycComponent', () => {
 
   const identitySubmittedNoDocuments: KycStatusResponse = {
     userId: 'u1',
-    status: 'PENDING',
+    status: 'NOT_STARTED',
     level: 'NONE',
     firstName: 'Alice',
     lastName: 'Anderson',
@@ -34,6 +34,30 @@ describe('KycComponent', () => {
   const identitySubmittedOneDocumentUploaded: KycStatusResponse = {
     ...identitySubmittedNoDocuments,
     documents: [{ id: 'doc-1', type: 'ID_DOCUMENT', uploaded: true, uploadedAt: '2026-01-01T00:00:00' }],
+  };
+
+  const bothDocumentsUploadedPending: KycStatusResponse = {
+    ...identitySubmittedNoDocuments,
+    status: 'PENDING',
+    documents: [
+      { id: 'doc-1', type: 'ID_DOCUMENT', uploaded: true, uploadedAt: '2026-01-01T00:00:00' },
+      { id: 'doc-2', type: 'SELFIE', uploaded: true, uploadedAt: '2026-01-01T00:00:00' },
+    ],
+  };
+
+  const rejected: KycStatusResponse = {
+    userId: 'u1',
+    status: 'REJECTED',
+    level: 'NONE',
+    firstName: 'Alice',
+    lastName: 'Anderson',
+    issuingCountry: 'UNITED_KINGDOM',
+    documentNumber: 'AA1234567',
+    rejectionReason: 'Document photo was blurry',
+    documents: [
+      { id: 'doc-1', type: 'ID_DOCUMENT', uploaded: true, uploadedAt: '2026-01-01T00:00:00' },
+      { id: 'doc-2', type: 'SELFIE', uploaded: true, uploadedAt: '2026-01-01T00:00:00' },
+    ],
   };
 
   const verified: KycStatusResponse = {
@@ -141,29 +165,14 @@ describe('KycComponent', () => {
     });
   });
 
-  describe('onFileSelected()', () => {
-    function fileInputEvent(file: File | null): Event {
-      const input = document.createElement('input');
-      input.type = 'file';
-      if (file) {
-        Object.defineProperty(input, 'files', { value: [file] });
-      }
-      return { target: input } as unknown as Event;
-    }
-
-    it('does nothing when no file was chosen', () => {
-      component.onFileSelected(fileInputEvent(null), 'ID_DOCUMENT');
-
-      expect(kycService.requestUploadUrl).not.toHaveBeenCalled();
-    });
-
-    it('requests an upload URL, uploads the file, completes the upload, and stores the resulting status', () => {
-      const file = new File(['content'], 'id.jpg', { type: 'image/jpeg' });
+  describe('onPhotoCaptured()', () => {
+    it('requests an upload URL, uploads the captured photo, completes the upload, and stores the resulting status', () => {
+      const file = new File(['content'], 'id-document.jpg', { type: 'image/jpeg' });
       kycService.requestUploadUrl.mockReturnValue(of({ documentId: 'doc-1', uploadUrl: 'https://minio.local/x' }));
       kycService.uploadFile.mockReturnValue(of(undefined));
       kycService.completeUpload.mockReturnValue(of(identitySubmittedOneDocumentUploaded));
 
-      component.onFileSelected(fileInputEvent(file), 'ID_DOCUMENT');
+      component.onPhotoCaptured(file, 'ID_DOCUMENT');
 
       expect(kycService.requestUploadUrl).toHaveBeenCalledWith('ID_DOCUMENT');
       expect(kycService.uploadFile).toHaveBeenCalledWith('https://minio.local/x', file);
@@ -173,23 +182,23 @@ describe('KycComponent', () => {
     });
 
     it('shows the backend error message when requesting the upload URL fails', () => {
-      const file = new File(['content'], 'id.jpg', { type: 'image/jpeg' });
+      const file = new File(['content'], 'id-document.jpg', { type: 'image/jpeg' });
       kycService.requestUploadUrl.mockReturnValue(
         throwError(() => ({ error: { message: 'Submit your identity details first' } })),
       );
 
-      component.onFileSelected(fileInputEvent(file), 'ID_DOCUMENT');
+      component.onPhotoCaptured(file, 'ID_DOCUMENT');
 
       expect(component.error()).toBe('Submit your identity details first');
       expect(component.uploadingType()).toBeNull();
     });
 
     it('falls back to a generic message when the upload itself fails', () => {
-      const file = new File(['content'], 'id.jpg', { type: 'image/jpeg' });
+      const file = new File(['content'], 'id-document.jpg', { type: 'image/jpeg' });
       kycService.requestUploadUrl.mockReturnValue(of({ documentId: 'doc-1', uploadUrl: 'https://minio.local/x' }));
       kycService.uploadFile.mockReturnValue(throwError(() => ({})));
 
-      component.onFileSelected(fileInputEvent(file), 'ID_DOCUMENT');
+      component.onPhotoCaptured(file, 'ID_DOCUMENT');
 
       expect(component.error()).toBe('Upload failed. Please try again.');
       expect(kycService.completeUpload).not.toHaveBeenCalled();
@@ -202,6 +211,86 @@ describe('KycComponent', () => {
 
       expect(component.isUploaded('ID_DOCUMENT')).toBe(true);
       expect(component.isUploaded('SELFIE')).toBe(false);
+    });
+  });
+
+  describe('isRejected()', () => {
+    it('returns true only when the status is REJECTED', () => {
+      component.status.set(rejected);
+      expect(component.isRejected()).toBe(true);
+
+      component.status.set(identitySubmittedNoDocuments);
+      expect(component.isRejected()).toBe(false);
+    });
+  });
+
+  describe('goToStep()', () => {
+    it('changes the active upload step', () => {
+      component.goToStep('SELFIE');
+      expect(component.uploadStep()).toBe('SELFIE');
+
+      component.goToStep('ID_DOCUMENT');
+      expect(component.uploadStep()).toBe('ID_DOCUMENT');
+    });
+  });
+
+  describe('upload step syncing', () => {
+    it('lands on the ID document step when no document has been uploaded yet', () => {
+      kycService.getStatus.mockReturnValue(of(identitySubmittedNoDocuments));
+
+      component.ngOnInit();
+
+      expect(component.uploadStep()).toBe('ID_DOCUMENT');
+    });
+
+    it('advances to the selfie step once the ID document is uploaded', () => {
+      kycService.getStatus.mockReturnValue(of(identitySubmittedOneDocumentUploaded));
+
+      component.ngOnInit();
+
+      expect(component.uploadStep()).toBe('SELFIE');
+    });
+
+    it('stays on the ID document step for a rejected submission, even with both documents already uploaded', () => {
+      kycService.getStatus.mockReturnValue(of(rejected));
+
+      component.ngOnInit();
+
+      expect(component.uploadStep()).toBe('ID_DOCUMENT');
+    });
+
+    it('advances to the selfie step after the ID document upload completes', () => {
+      const file = new File(['content'], 'id-document.jpg', { type: 'image/jpeg' });
+      kycService.requestUploadUrl.mockReturnValue(of({ documentId: 'doc-1', uploadUrl: 'https://minio.local/x' }));
+      kycService.uploadFile.mockReturnValue(of(undefined));
+      kycService.completeUpload.mockReturnValue(of(identitySubmittedOneDocumentUploaded));
+
+      component.onPhotoCaptured(file, 'ID_DOCUMENT');
+
+      expect(component.uploadStep()).toBe('SELFIE');
+    });
+  });
+
+  describe('statusLabel()', () => {
+    it('shows "In progress" once identity details are submitted but the profile is not yet complete', () => {
+      component.status.set(identitySubmittedNoDocuments);
+
+      expect(component.statusLabel()).toBe('In progress');
+      expect(component.statusBadgeClass()).toBe('badge-warning');
+    });
+
+    it('shows "Not started" before any identity details are submitted', () => {
+      component.status.set(notStarted);
+
+      expect(component.statusLabel()).toBe('Not started');
+      expect(component.statusBadgeClass()).toBe('badge-muted');
+    });
+
+    it('shows "Pending" once the profile is complete and awaiting review', () => {
+      component.status.set(bothDocumentsUploadedPending);
+
+      expect(component.statusLabel()).toBe('Pending');
+      expect(component.statusBadgeClass()).toBe('badge-warning');
     });
   });
 
@@ -220,26 +309,42 @@ describe('KycComponent', () => {
 
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.querySelector('input[name="firstName"]')).toBeTruthy();
-      expect(compiled.querySelector('input[type="file"]')).toBeFalsy();
+      expect(compiled.querySelector('app-camera-capture')).toBeFalsy();
       const buttons = Array.from(compiled.querySelectorAll('button')).map((b) => b.textContent?.trim());
       expect(buttons.some((text) => text?.includes('Back'))).toBe(true);
     });
 
-    it('shows the document upload section once identity details are submitted', () => {
+    it('shows only the ID document step, on its own, once identity details are submitted', () => {
       kycService.getStatus.mockReturnValue(of(identitySubmittedNoDocuments));
       fixture.detectChanges();
 
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.querySelector('input[name="firstName"]')).toBeFalsy();
-      const fileInputs = compiled.querySelectorAll('input[type="file"]');
-      expect(fileInputs.length).toBe(2);
+      expect(compiled.querySelectorAll('app-camera-capture').length).toBe(1);
+      expect(compiled.textContent).toContain('ID document photo');
+      // The selfie step's own content should not be rendered yet - only its step-indicator label is.
+      expect(compiled.textContent).not.toContain('Look directly at the camera');
     });
 
-    it('shows "Uploaded" for a document already uploaded and leaves the other pending', () => {
+    it('auto-advances to the selfie step and marks the ID document step done once it is uploaded', () => {
       kycService.getStatus.mockReturnValue(of(identitySubmittedOneDocumentUploaded));
       fixture.detectChanges();
 
       const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.querySelectorAll('app-camera-capture').length).toBe(1);
+      expect(compiled.textContent).toContain('Selfie');
+      expect(compiled.querySelector('.step-dot-done')).toBeTruthy();
+    });
+
+    it('lets the user step back from the selfie step to review the ID document again', () => {
+      kycService.getStatus.mockReturnValue(of(identitySubmittedOneDocumentUploaded));
+      fixture.detectChanges();
+
+      component.goToStep('ID_DOCUMENT');
+      fixture.detectChanges();
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.textContent).toContain('ID document photo');
       expect(compiled.textContent).toContain('Uploaded');
     });
 
@@ -248,10 +353,31 @@ describe('KycComponent', () => {
       fixture.detectChanges();
 
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.querySelector('input[type="file"]')).toBeFalsy();
+      expect(compiled.querySelector('app-camera-capture')).toBeFalsy();
       expect(compiled.textContent).toContain('Verified');
       const buttons = Array.from(compiled.querySelectorAll('button')).map((b) => b.textContent?.trim());
       expect(buttons.some((text) => text?.includes('Go to Accounts'))).toBe(true);
+    });
+
+    it('shows the rejection reason and re-enables the camera capture for a rejected submission, on both steps', () => {
+      kycService.getStatus.mockReturnValue(of(rejected));
+      fixture.detectChanges();
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.textContent).toContain('Document photo was blurry');
+      // Both documents are already marked uploaded=true, but rejection must still allow a
+      // fresh capture rather than leaving the user stuck with a disabled camera trigger - on
+      // whichever step is currently active.
+      let cameraTriggerButtons = Array.from(compiled.querySelectorAll('app-camera-capture button'));
+      expect(cameraTriggerButtons.length).toBe(1);
+      expect((cameraTriggerButtons[0] as HTMLButtonElement).disabled).toBe(false);
+
+      component.goToStep('SELFIE');
+      fixture.detectChanges();
+
+      cameraTriggerButtons = Array.from(compiled.querySelectorAll('app-camera-capture button'));
+      expect(cameraTriggerButtons.length).toBe(1);
+      expect((cameraTriggerButtons[0] as HTMLButtonElement).disabled).toBe(false);
     });
   });
 });

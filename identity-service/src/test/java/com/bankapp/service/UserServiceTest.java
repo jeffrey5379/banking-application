@@ -78,6 +78,29 @@ class UserServiceTest {
     }
 
     @Test
+    void loadUserByUsername_defaultRole_grantsRoleUserAuthority() {
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
+
+        UserDetails userDetails = userService.loadUserByUsername("alice");
+
+        assertThat(userDetails.getAuthorities())
+                .extracting(Object::toString)
+                .containsExactly("ROLE_USER");
+    }
+
+    @Test
+    void loadUserByUsername_adminRole_grantsRoleAdminAuthority() {
+        alice.setRole(com.bankapp.model.Role.ADMIN);
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));
+
+        UserDetails userDetails = userService.loadUserByUsername("alice");
+
+        assertThat(userDetails.getAuthorities())
+                .extracting(Object::toString)
+                .containsExactly("ROLE_ADMIN");
+    }
+
+    @Test
     void loadUserByUsername_disabledUser_returnsDisabledUserDetails() {
         alice.setEnabled(false);
         when(userRepository.findByUsername("alice")).thenReturn(Optional.of(alice));

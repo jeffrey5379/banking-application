@@ -1,6 +1,8 @@
 package com.bankapp.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 
 import java.util.UUID;
 
@@ -8,8 +10,14 @@ public class AuthDtos {
 
     public record RegisterRequest(
             @NotBlank String username,
-            @NotBlank String email,
-            @NotBlank String password
+            @NotBlank @Email String email,
+            @NotBlank
+            @Pattern(
+                    regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{9,}$",
+                    message = "Password must be more than 8 characters and include an uppercase letter, "
+                            + "a lowercase letter, a digit, and a special character."
+            )
+            String password
     ) {}
 
     public record LoginRequest(
@@ -29,7 +37,8 @@ public class AuthDtos {
     public record AuthResponse(
             String token,
             UUID userId,
-            String username
+            String username,
+            boolean admin
     ) {}
 
     public record UserResponse(

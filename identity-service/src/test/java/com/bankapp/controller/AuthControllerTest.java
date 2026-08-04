@@ -48,7 +48,7 @@ class AuthControllerTest {
         LoginChallengeResponse challenge = new LoginChallengeResponse("challenge-token-1");
         when(authService.register(any())).thenReturn(challenge);
 
-        RegisterRequest req = new RegisterRequest("alice", "alice@example.com", "alice123");
+        RegisterRequest req = new RegisterRequest("alice", "alice@example.com", "Alice#123!");
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -62,7 +62,7 @@ class AuthControllerTest {
         when(authService.register(any()))
                 .thenThrow(new IllegalArgumentException("Username already exists: alice"));
 
-        RegisterRequest req = new RegisterRequest("alice", "alice@example.com", "alice123");
+        RegisterRequest req = new RegisterRequest("alice", "alice@example.com", "Alice#123!");
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -72,7 +72,28 @@ class AuthControllerTest {
 
     @Test
     void register_blankUsername_returns400() throws Exception {
-        RegisterRequest req = new RegisterRequest("", "alice@example.com", "alice123");
+        RegisterRequest req = new RegisterRequest("", "alice@example.com", "Alice#123!");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_weakPassword_returns400() throws Exception {
+        // 8 chars, lowercase + digits only - fails the min-length and composition requirements.
+        RegisterRequest req = new RegisterRequest("alice", "alice@example.com", "alice123");
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_malformedEmail_returns400() throws Exception {
+        RegisterRequest req = new RegisterRequest("alice", "not-an-email", "Alice#123!");
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,6 +131,21 @@ class AuthControllerTest {
     }
 
     @Test
+    void login_deactivatedAccount_returns401WithSupportMessage() throws Exception {
+        when(authService.login(any()))
+                .thenThrow(new org.springframework.security.authentication.DisabledException("Account disabled"));
+
+        LoginRequest req = new LoginRequest("alice", "Alice#123!");
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value(
+                        "This account has been deactivated. Please contact support for details."));
+    }
+
+    @Test
     void login_blankPassword_returns400() throws Exception {
         LoginRequest req = new LoginRequest("alice", "");
 
@@ -123,7 +159,7 @@ class AuthControllerTest {
 
     @Test
     void verifyOtp_validCode_returns200WithToken() throws Exception {
-        AuthResponse authResponse = new AuthResponse("jwt.token.here", ALICE_PUBLIC_ID, "alice");
+        AuthResponse authResponse = new AuthResponse("jwt.token.here", ALICE_PUBLIC_ID, "alice", false);
         when(authService.verifyOtp(any())).thenReturn(authResponse);
 
         VerifyOtpRequest req = new VerifyOtpRequest("challenge-token-1", "111111");

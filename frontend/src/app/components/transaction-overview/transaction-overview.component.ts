@@ -22,26 +22,23 @@ import {
   imports: [CommonModule, RouterLink],
   template: `
     <div class="page-container">
-      <!-- Breadcrumb -->
-      <div class="breadcrumb-row">
-        <nav class="breadcrumb">
-          <a routerLink="/accounts">Accounts</a>
-          <span class="sep">›</span>
-          <a [routerLink]="['/accounts', tx()?.accountId]">{{
-            tx()?.accountNumber || "…"
-          }}</a>
-          <span class="sep">›</span>
-          <span>Transaction #{{ tx()?.id }}</span>
-        </nav>
-        @if (tx()) {
-          <a
-            [routerLink]="['/accounts', tx()!.accountId]"
-            class="btn btn-ghost btn-sm"
-          >
-            ← Back to Account
-          </a>
-        }
-      </div>
+      @if (tx()) {
+        <a
+          [routerLink]="['/accounts', tx()!.accountId]"
+          class="btn btn-ghost btn-sm back-link"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M10 4l-4 4 4 4"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Back to Account
+        </a>
+      }
 
       @if (loading()) {
         <div class="loading-state">
@@ -238,32 +235,12 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
     `
-      .breadcrumb-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+      .back-link {
         margin-bottom: 20px;
-      }
-      .breadcrumb {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
-        color: var(--ink-muted);
       }
       .btn-sm {
         padding: 4px 12px;
         font-size: 12px;
-      }
-      .breadcrumb a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      .breadcrumb a:hover {
-        text-decoration: underline;
-      }
-      .sep {
-        color: var(--border);
       }
       .link {
         color: var(--accent);

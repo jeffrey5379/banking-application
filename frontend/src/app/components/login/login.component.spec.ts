@@ -7,11 +7,11 @@ import { AuthService } from '../../services/auth.service';
 describe('LoginComponent', () => {
   let component: LoginComponent;
   let fixture: ComponentFixture<LoginComponent>;
-  let authService: jest.Mocked<Pick<AuthService, 'login' | 'verifyOtp' | 'register'>>;
+  let authService: jest.Mocked<Pick<AuthService, 'login' | 'verifyOtp' | 'register' | 'isAdmin'>>;
   let router: { navigate: jest.Mock };
 
   beforeEach(() => {
-    authService = { login: jest.fn(), verifyOtp: jest.fn(), register: jest.fn() };
+    authService = { login: jest.fn(), verifyOtp: jest.fn(), register: jest.fn(), isAdmin: jest.fn(() => false) };
     router = { navigate: jest.fn() };
 
     TestBed.configureTestingModule({
@@ -71,7 +71,7 @@ describe('LoginComponent', () => {
       expect(component.loading).toBe(false);
     });
 
-    it('shows an invalid-credentials message on a 401', () => {
+    it('shows an invalid-credentials message on a 401 with no backend message', () => {
       component.username = 'alice';
       component.password = 'wrong';
       authService.login.mockReturnValue(throwError(() => ({ status: 401 })));
@@ -79,6 +79,25 @@ describe('LoginComponent', () => {
       component.onLogin();
 
       expect(component.error).toBe('Invalid username or password.');
+      expect(component.step).toBe('credentials');
+      expect(component.loading).toBe(false);
+    });
+
+    it('shows the backend message on a 401 for a deactivated account', () => {
+      component.username = 'alice';
+      component.password = 'secret';
+      authService.login.mockReturnValue(
+        throwError(() => ({
+          status: 401,
+          error: { message: 'This account has been deactivated. Please contact support for details.' },
+        })),
+      );
+
+      component.onLogin();
+
+      expect(component.error).toBe(
+        'This account has been deactivated. Please contact support for details.',
+      );
       expect(component.step).toBe('credentials');
       expect(component.loading).toBe(false);
     });
@@ -114,12 +133,22 @@ describe('LoginComponent', () => {
 
     it('verifies with the stored challenge token and navigates to /accounts on success', () => {
       component.otpCode = '111111';
-      authService.verifyOtp.mockReturnValue(of({ token: 'jwt', userId: '1', username: 'alice' }));
+      authService.verifyOtp.mockReturnValue(of({ token: 'jwt', userId: '1', username: 'alice', admin: false }));
 
       component.onVerifyOtp();
 
       expect(authService.verifyOtp).toHaveBeenCalledWith('challenge-token-1', '111111');
       expect(router.navigate).toHaveBeenCalledWith(['/accounts']);
+    });
+
+    it('navigates to /admin instead of /accounts when the verified user is an admin', () => {
+      component.otpCode = '111111';
+      authService.verifyOtp.mockReturnValue(of({ token: 'jwt', userId: '4', username: 'admin', admin: true }));
+      authService.isAdmin.mockReturnValue(true);
+
+      component.onVerifyOtp();
+
+      expect(router.navigate).toHaveBeenCalledWith(['/admin']);
     });
 
     it('shows the backend error message when the code is rejected', () => {
@@ -200,7 +229,7 @@ describe('LoginComponent', () => {
       component.onRegister({ invalid: false });
 
       component.otpCode = '111111';
-      authService.verifyOtp.mockReturnValue(of({ token: 'jwt', userId: '2', username: 'bob' }));
+      authService.verifyOtp.mockReturnValue(of({ token: 'jwt', userId: '2', username: 'bob', admin: false }));
       component.onVerifyOtp();
 
       expect(authService.verifyOtp).toHaveBeenCalledWith('challenge-token-2', '111111');

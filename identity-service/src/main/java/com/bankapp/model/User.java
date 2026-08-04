@@ -37,6 +37,10 @@ public class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Role role = Role.USER;
+
     @Override
     public String toString() {
         return "User{username='" + username + "', email='" + email + "'}";

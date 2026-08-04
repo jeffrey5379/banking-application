@@ -12,7 +12,7 @@ import { accountCardByCurrency, getAccountNumber, getHeroBalance, login } from "
 // applied, not arbitrary numbers.
 test.describe("accounts", () => {
   test("lists a seeded user's accounts with real balances", async ({ page }) => {
-    await login(page, "carol", "carol123");
+    await login(page, "carol", "$E3ltbJg^b");
 
     await expect(accountCardByCurrency(page, "USD")).toBeVisible();
     await expect(accountCardByCurrency(page, "USD").locator(".balance-amount")).toHaveText("7,608.70");
@@ -21,7 +21,7 @@ test.describe("accounts", () => {
   });
 
   test("opens an account and shows its detail page", async ({ page }) => {
-    await login(page, "carol", "carol123");
+    await login(page, "carol", "$E3ltbJg^b");
     await accountCardByCurrency(page, "USD").click();
 
     await expect(page.getByText("Current balance")).toBeVisible();
@@ -32,7 +32,7 @@ test.describe("accounts", () => {
   });
 
   test("a user with multiple accounts sees every one of them", async ({ page }) => {
-    await login(page, "alice", "alice123");
+    await login(page, "alice", "0DxKRQZhD!");
 
     await expect(accountCardByCurrency(page, "EUR")).toBeVisible();
     await expect(accountCardByCurrency(page, "USD")).toBeVisible();

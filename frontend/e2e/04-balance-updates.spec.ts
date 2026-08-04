@@ -27,7 +27,7 @@ test.describe("live balance updates (SSE)", () => {
   test("balance, balance history, transaction history and a toast all update live", async ({ browser }) => {
     const bobContext = await browser.newContext();
     const bobPage = await bobContext.newPage();
-    await login(bobPage, "bob", "bob123");
+    await login(bobPage, "bob", "jh02EZ3DH#");
     await openAccountByCurrency(bobPage, "EUR");
 
     const bobAccountNumber = await getAccountNumber(bobPage);
@@ -40,7 +40,7 @@ test.describe("live balance updates (SSE)", () => {
 
     const aliceContext = await browser.newContext();
     const alicePage = await aliceContext.newPage();
-    await login(alicePage, "alice", "alice123");
+    await login(alicePage, "alice", "0DxKRQZhD!");
     // Alice's EUR account (debit-eligible per wiremock's seeded account ids - see
     // AccountService.transferInternal) hasn't been used as a sender anywhere else in the suite.
     await openAccountByCurrency(alicePage, "EUR");
@@ -87,7 +87,7 @@ test.describe("live balance updates (SSE)", () => {
       if (req.url().includes("/api/notifications/ticket")) ticketRequests.push(req.url());
     });
 
-    await login(bobPage, "bob", "bob123");
+    await login(bobPage, "bob", "jh02EZ3DH#");
     await openAccountByCurrency(bobPage, "EUR");
     const bobAccountNumber = await getAccountNumber(bobPage);
     const ticketCountAfterLogin = ticketRequests.length; // the initial connect()'s own ticket
@@ -96,7 +96,7 @@ test.describe("live balance updates (SSE)", () => {
     // running, so the only thing left to do once the renewal is confirmed is the click itself.
     const aliceContext = await browser.newContext();
     const alicePage = await aliceContext.newPage();
-    await login(alicePage, "alice", "alice123");
+    await login(alicePage, "alice", "0DxKRQZhD!");
     await openAccountByCurrency(alicePage, "EUR");
     await fillSendMoneyForm(alicePage, {
       amount: "10",
@@ -139,7 +139,7 @@ test.describe("live balance updates (SSE)", () => {
       if (req.url().includes("/api/notifications/ticket")) ticketRequests.push(req.url());
     });
 
-    await login(bobPage, "bob", "bob123");
+    await login(bobPage, "bob", "jh02EZ3DH#");
     await openAccountByCurrency(bobPage, "EUR");
     const bobAccountNumber = await getAccountNumber(bobPage);
     const ticketCountBeforeRelogin = ticketRequests.length;
@@ -148,7 +148,7 @@ test.describe("live balance updates (SSE)", () => {
     // reconnects it fresh via a brand-new ticket (AppComponent's router-driven
     // syncNotificationConnection - see its NavigationEnd subscription).
     await logout(bobPage);
-    await login(bobPage, "bob", "bob123");
+    await login(bobPage, "bob", "jh02EZ3DH#");
     // A brief settle before clicking: this is a *re*-login in the same long-running SPA
     // instance (NoopLocationStrategy means no page reload), and the accounts list re-fetching
     // right on top of the just-rendered one from the first login can otherwise detach the very
@@ -162,7 +162,7 @@ test.describe("live balance updates (SSE)", () => {
 
     const aliceContext = await browser.newContext();
     const alicePage = await aliceContext.newPage();
-    await login(alicePage, "alice", "alice123");
+    await login(alicePage, "alice", "0DxKRQZhD!");
     await openAccountByCurrency(alicePage, "EUR");
     await fillSendMoneyForm(alicePage, {
       amount: "15",

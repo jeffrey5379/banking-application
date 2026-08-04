@@ -54,9 +54,11 @@ describe('AuthService', () => {
 
     it('saves the token and user to sessionStorage after a successful verification', () => {
       service.verifyOtp('challenge-token-1', '111111').subscribe();
-      httpMock.expectOne('/api/auth/verify-otp').flush({ token: 'tok123', userId: '1', username: 'alice' });
+      httpMock
+        .expectOne('/api/auth/verify-otp')
+        .flush({ token: 'tok123', userId: '1', username: 'alice', admin: false });
       expect(service.getToken()).toBe('tok123');
-      expect(service.getUser()).toEqual({ userId: '1', username: 'alice' });
+      expect(service.getUser()).toEqual({ userId: '1', username: 'alice', admin: false });
     });
 
     it('does not save a session when the code is rejected', () => {
@@ -111,8 +113,32 @@ describe('AuthService', () => {
 
     it('returns the parsed user object after OTP verification', () => {
       service.verifyOtp('challenge-token-1', '111111').subscribe();
-      httpMock.expectOne('/api/auth/verify-otp').flush({ token: 'tok', userId: '3', username: 'charlie' });
-      expect(service.getUser()).toEqual({ userId: '3', username: 'charlie' });
+      httpMock
+        .expectOne('/api/auth/verify-otp')
+        .flush({ token: 'tok', userId: '3', username: 'charlie', admin: false });
+      expect(service.getUser()).toEqual({ userId: '3', username: 'charlie', admin: false });
+    });
+  });
+
+  describe('isAdmin()', () => {
+    it('returns false when not logged in', () => {
+      expect(service.isAdmin()).toBe(false);
+    });
+
+    it('returns true when the JWT response carried admin: true', () => {
+      service.verifyOtp('challenge-token-1', '111111').subscribe();
+      httpMock
+        .expectOne('/api/auth/verify-otp')
+        .flush({ token: 'tok', userId: '4', username: 'admin', admin: true });
+      expect(service.isAdmin()).toBe(true);
+    });
+
+    it('returns false for a regular, non-admin user', () => {
+      service.verifyOtp('challenge-token-1', '111111').subscribe();
+      httpMock
+        .expectOne('/api/auth/verify-otp')
+        .flush({ token: 'tok', userId: '1', username: 'alice', admin: false });
+      expect(service.isAdmin()).toBe(false);
     });
   });
 

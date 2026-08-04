@@ -57,6 +57,8 @@ public class AuthService {
         UserDetails userDetails = userDetailsService.loadUserByUsername(username);
         UserResponse user = userService.getUserByUsername(username);
         String token = jwtService.generateToken(userDetails, user.id());
-        return new AuthResponse(token, user.id(), user.username());
+        boolean isAdmin = userDetails.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        return new AuthResponse(token, user.id(), user.username(), isAdmin);
     }
 }

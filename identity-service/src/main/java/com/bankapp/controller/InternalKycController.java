@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
-// Service-to-service only (called by core-banking's KycStatusClient)
 @RestController
 @RequestMapping("/internal/kyc")
 @RequiredArgsConstructor

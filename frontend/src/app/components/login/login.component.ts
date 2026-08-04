@@ -139,7 +139,16 @@ import { AuthService } from "../../services/auth.service";
               style="margin-top:8px"
               (click)="backToCredentials()"
             >
-              ← Back
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M10 4l-4 4 4 4"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Back
             </button>
           </form>
         }
@@ -209,7 +218,7 @@ import { AuthService } from "../../services/auth.service";
                 </span>
               }
             </div>
-            <div class="form-group" style="margin-bottom:20px">
+            <div class="form-group">
               <label class="form-label">Password</label>
               <input
                 class="form-input"
@@ -220,7 +229,7 @@ import { AuthService } from "../../services/auth.service";
                 placeholder="Choose a password"
                 autocomplete="new-password"
                 required
-                minlength="4"
+                pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{9,}"
                 [class.input-invalid]="
                   passwordField.invalid &&
                   (passwordField.touched || registerForm.submitted)
@@ -234,7 +243,36 @@ import { AuthService } from "../../services/auth.service";
                   {{
                     passwordField.errors?.["required"]
                       ? "Password is required."
-                      : "At least 4 characters required."
+                      : "More than 8 characters, uppercase and lowercase letters, digits and special characters"
+                  }}
+                </span>
+              }
+            </div>
+            <div class="form-group" style="margin-bottom:20px">
+              <label class="form-label">Confirm password</label>
+              <input
+                class="form-input"
+                type="password"
+                [(ngModel)]="confirmPassword"
+                name="confirmPassword"
+                #confirmPasswordField="ngModel"
+                placeholder="Re-enter your password"
+                autocomplete="new-password"
+                required
+                [class.input-invalid]="
+                  (confirmPasswordField.invalid || passwordsMismatch) &&
+                  (confirmPasswordField.touched || registerForm.submitted)
+                "
+              />
+              @if (
+                (confirmPasswordField.invalid || passwordsMismatch) &&
+                (confirmPasswordField.touched || registerForm.submitted)
+              ) {
+                <span class="field-error">
+                  {{
+                    confirmPasswordField.errors?.["required"]
+                      ? "Please confirm your password."
+                      : "Passwords do not match."
                   }}
                 </span>
               }
@@ -339,6 +377,7 @@ export class LoginComponent {
   username = "";
   email = "";
   password = "";
+  confirmPassword = "";
   otpCode = "";
   loading = false;
   error = "";
@@ -350,11 +389,16 @@ export class LoginComponent {
     private router: Router,
   ) {}
 
+  get passwordsMismatch(): boolean {
+    return this.confirmPassword.length > 0 && this.password !== this.confirmPassword;
+  }
+
   switchMode(mode: "login" | "register") {
     this.mode = mode;
     this.step = "credentials";
     this.error = "";
     this.password = "";
+    this.confirmPassword = "";
     this.otpCode = "";
   }
 
@@ -374,7 +418,7 @@ export class LoginComponent {
       error: (err) => {
         this.error =
           err.status === 401
-            ? "Invalid username or password."
+            ? err.error?.message || "Invalid username or password."
             : "Login failed. Please try again.";
         this.loading = false;
       },
@@ -389,7 +433,8 @@ export class LoginComponent {
     this.loading = true;
     this.error = "";
     this.authService.verifyOtp(this.challengeToken, this.otpCode).subscribe({
-      next: () => this.router.navigate(["/accounts"]),
+      next: () =>
+        this.router.navigate([this.authService.isAdmin() ? "/admin" : "/accounts"]),
       error: (err) => {
         this.error = err.error?.message || "Invalid or expired code.";
         this.loading = false;
@@ -404,7 +449,7 @@ export class LoginComponent {
   }
 
   onRegister(form: any) {
-    if (form.invalid) return;
+    if (form.invalid || this.passwordsMismatch) return;
     this.loading = true;
     this.error = "";
     this.authService

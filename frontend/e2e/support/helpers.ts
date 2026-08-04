@@ -1,5 +1,4 @@
 import { APIRequestContext, Page, expect } from "@playwright/test";
-import { createHmac } from "node:crypto";
 
 export const OTP_CODE = "111111";
 
@@ -7,7 +6,10 @@ export async function gotoApp(page: Page) {
   await page.goto("/");
 }
 
-export async function login(page: Page, username: string, password: string) {
+// Shared by login()/loginAdmin() - just the credentials + OTP steps, with no assertion on
+// which page the user lands on afterwards (login.component.ts routes admins to /admin and
+// everyone else to /accounts, so that part is caller-specific).
+async function authenticate(page: Page, username: string, password: string): Promise<void> {
   await gotoApp(page);
   await page.getByPlaceholder("Enter username").fill(username);
   await page.getByPlaceholder("Enter password").fill(password);
@@ -16,13 +18,40 @@ export async function login(page: Page, username: string, password: string) {
   await page.getByPlaceholder("6-digit code").fill(OTP_CODE);
   await page.getByRole("button", { name: "Verify Code", exact: true }).click();
   await page.waitForTimeout(500);
+}
+
+export async function login(page: Page, username: string, password: string) {
+  await authenticate(page, username, password);
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
   await expect(page.locator(".account-card, .empty-state").first()).toBeVisible();
+}
+
+export async function loginAdmin(page: Page, username: string, password: string): Promise<void> {
+  await authenticate(page, username, password);
+  await expect(page.getByRole("heading", { name: "Administration" })).toBeVisible();
+  await expect(page.locator(".data-table tbody tr, .empty-state").first()).toBeVisible();
 }
 
 export async function logout(page: Page) {
   await page.locator(".btn-logout").click();
   await expect(page.getByPlaceholder("Enter username")).toBeVisible();
+}
+
+// Mirrors the "registers a brand new user" flow in 01-auth.spec.ts, factored out here so other
+// specs (e.g. the admin console tests) can get a fresh, real, non-seeded user without depending
+// on that file.
+export async function registerUser(page: Page, username: string, password: string): Promise<void> {
+  await gotoApp(page);
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await page.getByPlaceholder("Choose a username").fill(username);
+  await page.getByPlaceholder("your@email.com").fill(`${username}@example.com`);
+  await page.getByPlaceholder("Choose a password").fill(password);
+  await page.getByPlaceholder("Re-enter your password").fill(password);
+  await page.getByRole("button", { name: "Create Account", exact: true }).click();
+  await page.getByPlaceholder("6-digit code").fill(OTP_CODE);
+  await page.getByRole("button", { name: "Verify Code", exact: true }).click();
+  await page.waitForTimeout(500);
+  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
 }
 
 // Unique enough per test run to never collide with seeded users or a
@@ -63,8 +92,10 @@ export async function getAccountNumber(page: Page): Promise<string> {
   return text.replace("Account", "").trim();
 }
 
+// Matches whichever control the labeled form-group actually contains - an <input> for most
+// fields, but e.g. the admin console's "Body" field is a <textarea> and "Priority" a <select>.
 export function modalField(page: Page, labelText: string) {
-  return page.locator(".modal .form-group").filter({ hasText: labelText }).locator("input");
+  return page.locator(".modal .form-group").filter({ hasText: labelText }).locator("input, textarea, select");
 }
 
 export interface AccountSnapshot {
@@ -148,27 +179,8 @@ export interface CreateMessageOptions {
   priority?: "NORMAL" | "HIGH";
 }
 
-const CORE_BANKING_DEV_SERVICE_SECRET_BASE64 = "zacTVpF/cO45cVpOAYTHbF0Rzntz1viiftAiVgBDJhDlRuWIfazQce/nKEJBDc5f";
-
-function base64url(input: Buffer): string {
-  return input.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function mintCoreBankingServiceToken(): string {
-  const header = { alg: "HS256", kid: "core-banking" };
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  const payload = { scope: "internal", iat: nowSeconds, exp: nowSeconds + 60 };
-
-  const signingInput = `${base64url(Buffer.from(JSON.stringify(header)))}.${base64url(Buffer.from(JSON.stringify(payload)))}`;
-  const secretBytes = Buffer.from(CORE_BANKING_DEV_SERVICE_SECRET_BASE64, "base64");
-  const signature = createHmac("sha256", secretBytes).update(signingInput).digest();
-
-  return `${signingInput}.${base64url(signature)}`;
-}
-
 export async function createMessage(request: APIRequestContext, opts: CreateMessageOptions): Promise<void> {
   const res = await request.post(`${NOTIFICATION_SERVICE_URL}/internal/messages`, {
-    headers: { "X-Service-Token": mintCoreBankingServiceToken() },
     data: {
       ownerId: opts.ownerId,
       subject: opts.subject,

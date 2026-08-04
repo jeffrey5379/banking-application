@@ -32,12 +32,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-// Document/selfie verification itself is mocked (same spirit as MockOtpClient / the
-// debit-eligibility wiremock stub elsewhere in this app): once the identity form is submitted and
-// both required files are confirmed uploaded to storage, that's treated as "verified" instead of
-// calling a real vendor for document authenticity/liveness checks. No manual review step exists
-// yet - see README for how a real reviewer step would slot in behind the same KycStatus state
-// machine.
 @Service
 @Transactional
 public class KycService {
@@ -82,13 +76,9 @@ public class KycService {
         if (profile.getSubmittedAt() == null) {
             profile.setSubmittedAt(LocalDateTime.now());
         }
-        if (profile.getStatus() == KycStatus.NOT_STARTED || profile.getStatus() == KycStatus.REJECTED) {
-            profile.setStatus(KycStatus.PENDING);
-            profile.setRejectionReason(null);
-        }
+        maybeMoveToPending(profile);
         kycProfileRepository.save(profile);
 
-        tryAutoVerify(profile);
         return toStatusResponse(profile);
     }
 
@@ -120,9 +110,7 @@ public class KycService {
         return new UploadUrlResponse(document.getPublicId(), uploadUrl);
     }
 
-    // Confirms the object actually landed in storage (via a real headObject call) before trusting
-    // the client's "I uploaded it" claim - otherwise a client could call this endpoint without
-    // ever uploading anything and still get verified.
+    // Confirms the object actually landed in storage (via a real headObject call)
     public KycStatusResponse completeUpload(String username, UUID documentId) {
         KycDocument document = kycDocumentRepository.findByPublicId(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document not found: " + documentId));
@@ -137,7 +125,9 @@ public class KycService {
         document.setUploadedAt(LocalDateTime.now());
         kycDocumentRepository.save(document);
 
-        tryAutoVerify(profile);
+        maybeMoveToPending(profile);
+        kycProfileRepository.save(profile);
+
         return toStatusResponse(profile);
     }
 
@@ -175,17 +165,30 @@ public class KycService {
         if (profile.getStatus() == KycStatus.VERIFIED) {
             return;
         }
-        boolean hasIdentityDetails = profile.getFirstName() != null;
-        boolean hasIdDocument = isTypeUploaded(profile, DocumentType.ID_DOCUMENT);
-        boolean hasSelfie = isTypeUploaded(profile, DocumentType.SELFIE);
-
-        if (hasIdentityDetails && hasIdDocument && hasSelfie) {
+        if (isComplete(profile)) {
             profile.setStatus(KycStatus.VERIFIED);
             profile.setLevel(KycLevel.BASIC);
             profile.setReviewedAt(LocalDateTime.now());
             profile.setRejectionReason(null);
             kycProfileRepository.save(profile);
         }
+    }
+
+    private void maybeMoveToPending(KycProfile profile) {
+        if ((profile.getStatus() == KycStatus.NOT_STARTED || profile.getStatus() == KycStatus.REJECTED)
+                && isComplete(profile)) {
+            profile.setStatus(KycStatus.PENDING);
+            profile.setRejectionReason(null);
+        }
+    }
+
+    private boolean isComplete(KycProfile profile) {
+        return profile.getFirstName() != null
+                && profile.getLastName() != null
+                && profile.getIssuingCountry() != null
+                && profile.getDocumentNumber() != null
+                && isTypeUploaded(profile, DocumentType.ID_DOCUMENT)
+                && isTypeUploaded(profile, DocumentType.SELFIE);
     }
 
     private boolean isTypeUploaded(KycProfile profile, DocumentType type) {

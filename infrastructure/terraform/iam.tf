@@ -36,8 +36,6 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
         [for s in aws_secretsmanager_secret.db_password : s.arn],
         [
           aws_secretsmanager_secret.jwt_secret.arn,
-          aws_secretsmanager_secret.core_banking_jwt_secret.arn,
-          aws_secretsmanager_secret.notification_jwt_secret.arn,
           aws_secretsmanager_secret.redis_auth_token.arn,
           aws_secretsmanager_secret.mail_username.arn,
           aws_secretsmanager_secret.mail_password.arn,
